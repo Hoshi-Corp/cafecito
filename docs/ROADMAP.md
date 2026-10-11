@@ -17,11 +17,13 @@ Make the data model safe to share before sharing it.
 
 Exit: all tests pass; remaining items above are done.
 
-### 0.3 Shared storage
+### 0.3 Shared storage (built, exit checks pending)
 - SQLite via `better-sqlite3`; schema and migrations in the repo.
 - Per-member write API (see architecture); the server rejects writes to other members' rows.
 - A server-backed `store.ts` exporting `useGroup`, `updateGroup` and `updateMember`; remove the Reset button and `resetDemo`/`parseGroup`.
 - Add the `/data` volume for the SQLite file to `docker-compose.yml` (the Dockerfile, compose file and release workflow already exist), plus backup instructions.
+
+Built: all four items. Identity is a placeholder cookie that picks a member (no accounts until 0.4). Verified: `docker build` and `docker run` with a fresh volume, API reads and writes in the container, one backup and restore. Still to do for the exit: the two-browser check in the UI. 0.2's range overrides and group cap are not done; overrides are stored one row per quantum.
 
 Exit: two browsers on two accounts see each other's changes after reload; `docker run` works from a clean machine; restore-from-backup tested once.
 

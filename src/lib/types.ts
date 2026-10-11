@@ -26,4 +26,8 @@ export interface Group {
   name: string;
   slotMinutes: SlotMinutes;
   members: Member[];
+  /** The member this browser is signed in as; the only one it may write to. */
+  meId: string;
+  /** The only member who may change group settings. */
+  ownerId: string;
 }

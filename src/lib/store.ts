@@ -1,121 +1,118 @@
 import { useSyncExternalStore } from "react";
-import { EMPTY_PATTERN, QUANTA_PER_DAY, QUANTA_PER_WEEK, paintPattern } from "./availability";
-import { SLOT_OPTIONS, type Group, type Mark, type Member } from "./types";
+import type { Group, Member, OverrideMark, SlotMinutes } from "./types";
 
-// Demo store: one sample group kept in this browser's localStorage. The
-// SQLite-backed store replaces this module (roadmap 0.3): `useGroup`, `updateGroup` and
-// `updateMember` carry over; `resetDemo` and `parseGroup` are demo-only.
-const STORAGE_KEY = "cafecito:demo:v1";
-
-type Range = [weekday: number, fromHour: number, toHour: number, mark?: Mark];
-
-function seedPattern(ranges: Range[]): string {
-  return ranges.reduce(
-    (p, [weekday, from, to, mark = "f"]) =>
-      paintPattern(p, weekday * QUANTA_PER_DAY + from * 4, (to - from) * 4, mark),
-    EMPTY_PATTERN,
-  );
-}
-
-function seedGroup(): Group {
-  const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const member = (
-    id: string,
-    name: string,
-    color: string,
-    timeZone: string,
-    ranges: Range[],
-  ): Member => ({ id, name, color, timeZone, pattern: seedPattern(ranges), overrides: {} });
-  return {
-    id: "demo",
-    name: "Café crew",
-    slotMinutes: 30,
-    members: [
-      member("you", "You", "#c2410c", local, []),
-      member("camille", "Camille", "#0f766e", "America/Toronto", [
-        [0, 18, 21], [1, 12, 13, "m"], [1, 18, 21], [3, 17.5, 22], [4, 17, 23], [5, 10, 15], [6, 10, 13],
-      ]),
-      member("diego", "Diego", "#7c3aed", "America/Toronto", [
-        [1, 18.5, 22], [2, 18, 20, "m"], [3, 18, 21.5], [4, 19, 23], [5, 9, 13], [6, 11, 17],
-      ]),
-      member("sofia", "Sofia", "#be185d", "America/Vancouver", [
-        [0, 15, 18], [1, 15, 19], [3, 14.5, 19], [4, 15, 20], [5, 8, 12], [6, 8, 11, "m"],
-      ]),
-      member("kenji", "Kenji", "#1d4ed8", "Europe/Lisbon", [
-        [1, 22, 24], [2, 0, 1, "m"], [3, 22, 24], [4, 22, 24], [5, 14, 19], [6, 15, 20],
-      ]),
-    ],
-  };
-}
+// Server-backed store. The UI edits a local copy right away and each change is sent as a
+// per-member write (see docs/ARCHITECTURE.md); a failed write reloads the group from the server.
+// Writes go to the member the server signed this browser in as, never to another's row.
+const GROUP_ID = "demo";
+const BASE = `/api/groups/${GROUP_ID}`;
 
 let current: Group | null = null;
+let loading = false;
+let failures = 0;
+let failed = false;
+const MAX_LOAD_TRIES = 3;
+let queue: Promise<unknown> = Promise.resolve();
 const listeners = new Set<() => void>();
 
-/** The saved group, or null when it is missing or not shaped like a group the UI can render. */
-export function parseGroup(saved: string | null): Group | null {
-  try {
-    const g = saved && (JSON.parse(saved) as Group);
-    const ok =
-      g &&
-      (SLOT_OPTIONS as readonly number[]).includes(g.slotMinutes) &&
-      Array.isArray(g.members) &&
-      g.members.length > 0 &&
-      g.members.every(
-        (m) =>
-          m &&
-          typeof m.id === "string" &&
-          typeof m.name === "string" &&
-          typeof m.timeZone === "string" &&
-          typeof m.pattern === "string" &&
-          m.pattern.length === QUANTA_PER_WEEK &&
-          typeof m.overrides === "object" &&
-          m.overrides !== null,
-      );
-    return ok ? g : null;
-  } catch {
-    return null;
-  }
-}
-
-function read(): Group {
-  if (current) return current;
-  try {
-    const saved = parseGroup(localStorage.getItem(STORAGE_KEY));
-    if (saved) return (current = saved);
-  } catch {
-    // Private mode: fall back to a fresh demo group.
-  }
-  return (current = seedGroup());
-}
-
-function write(next: Group) {
+function set(next: Group) {
   current = next;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Keep working in memory.
-  }
   listeners.forEach((l) => l());
+}
+
+async function load() {
+  loading = true;
+  try {
+    const res = await fetch(BASE, { cache: "no-store" });
+    if (!res.ok) throw new Error(`GET: ${res.status}`);
+    failures = 0;
+    set(await res.json());
+  } catch (e) {
+    console.error("Could not load the group", e);
+    // Nothing else would retry: the first subscribe is the only trigger.
+    if (!current) {
+      if (++failures < MAX_LOAD_TRIES) setTimeout(load, 3000);
+      else {
+        failed = true;
+        listeners.forEach((l) => l());
+      }
+    }
+  } finally {
+    loading = false;
+  }
+}
+
+/** Sends one write after the previous one, so changes land in the order they were made. */
+function send(path: string, method: "PATCH" | "POST", body: unknown) {
+  queue = queue
+    .then(async () => {
+      const res = await fetch(BASE + path, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`);
+    })
+    .catch((e) => {
+      console.error("Change not saved, reloading", e);
+      return load();
+    });
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
+  if (!current && !loading) load();
   return () => listeners.delete(listener);
 }
 
-/** Null while rendering on the server, where there is no stored group. */
+/** Null until the first load finishes (and while rendering on the server). */
 export function useGroup(): Group | null {
-  return useSyncExternalStore(subscribe, read, () => null);
+  return useSyncExternalStore(subscribe, () => current, () => null);
 }
 
-export function updateGroup(change: (group: Group) => Group) {
-  write(change(read()));
+/** True once the first load has failed every try; `retryLoad` starts over. */
+export function useLoadFailed(): boolean {
+  return useSyncExternalStore(subscribe, () => failed, () => false);
+}
+
+export function retryLoad() {
+  failures = 0;
+  failed = false;
+  listeners.forEach((l) => l());
+  load();
+}
+
+/** Group settings. Only the owner may change them; anyone else's change is rolled back. */
+export function updateGroup(patch: { slotMinutes: SlotMinutes }) {
+  if (!current) return;
+  set({ ...current, ...patch });
+  send("", "PATCH", patch);
 }
 
 export function updateMember(id: string, change: (member: Member) => Member) {
-  updateGroup((g) => ({ ...g, members: g.members.map((m) => (m.id === id ? change(m) : m)) }));
+  if (!current || id !== current.meId) return;
+  const before = current.members.find((m) => m.id === id)!;
+  const after = change(before);
+  set({ ...current, members: current.members.map((m) => (m === before ? after : m)) });
+
+  const profile: Partial<Pick<Member, "name" | "color" | "timeZone" | "pattern">> = {};
+  for (const k of ["name", "color", "timeZone", "pattern"] as const)
+    if (after[k] !== before[k]) Object.assign(profile, { [k]: after[k] });
+  if (Object.keys(profile).length) send("/me", "PATCH", profile);
+
+  const setMarks: Record<number, OverrideMark> = {};
+  for (const [q, mark] of Object.entries(after.overrides)) if (before.overrides[+q] !== mark) setMarks[+q] = mark;
+  const remove = Object.keys(before.overrides).map(Number).filter((q) => !(q in after.overrides));
+  if (Object.keys(setMarks).length || remove.length) send("/me/overrides", "PATCH", { set: setMarks, remove });
 }
 
-export function resetDemo() {
-  write(seedGroup());
+/** Placeholder until real sessions (0.4): act as another member of the group. */
+export async function signInAs(memberId: string) {
+  await queue;
+  const res = await fetch(`${BASE}/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ memberId }),
+  });
+  if (res.ok) await load();
 }

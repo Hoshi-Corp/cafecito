@@ -29,12 +29,14 @@ Cafecito answers one question for a group of friends: **when can we all get toge
 ```
 src/lib/types.ts          Member, Group, Mark, SLOT_OPTIONS
 src/lib/availability.ts   quanta math, markAt/slotMark, summarize, bestWindows, paint*
-src/lib/store.ts          demo store (localStorage): useGroup / updateGroup / updateMember, plus demo-only resetDemo / parseGroup
+src/lib/store.ts          client store: useGroup / updateGroup / updateMember, optimistic, sends per-member writes
+src/server/               SQLite (db, schema + migrations, seed) and the validated, own-rows-only writes (groups.ts)
+src/app/api/groups/[id]/  GET group, PATCH group (owner), PATCH me, PATCH me/overrides, POST session (placeholder)
 src/components/GroupApp   screens: typical week, dates, group heatmap, best times
 src/components/WeekGrid   the paintable grid
 ```
 
-`store.ts` is the seam. The UI uses `useGroup`, `updateGroup`, `updateMember` and, for the Reset button, `resetDemo`. The server-backed store replaces that module (roadmap 0.3) and must drop `resetDemo`'s button or keep it demo-only; `parseGroup` (saved-data check) is replaced by server-side validation.
+`store.ts` is the seam. The UI uses `useGroup`, `updateGroup({ slotMinutes })`, `updateMember` and `signInAs`. The caller's identity is the server-set `cafecito_member` cookie (a placeholder until 0.4); write routes take no member id, so another member's row cannot be addressed.
 
 ## Target architecture (v1.0)
 
@@ -84,5 +86,6 @@ The invite link is the credential: opening it asks for a name and sets a long-li
 - **Repeated hour.** When clocks go back, the grid has one row for the hour that happens twice, so date-specific overrides can only target the first occurrence. The typical week applies to both, and selecting a best time inside the repeated hour still shows who is free (no grid highlight). Pinned by tests in `availability.test.ts`.
 - **Zone offsets are cached** per zone and hour in `availability.ts` (exact: hours containing a transition fall back to a direct lookup).
 - **Privacy.** Every member sees every other member's free/maybe pattern. "Busy" never carries a reason. State this in the UI when joining.
-- **Whole-group writes** in `updateGroup` are fine for the single-user demo and must not survive into shared storage.
+- **Whole-group writes** are gone: `updateGroup` sends only the slot size, `updateMember` sends only changed fields and override quanta.
+- **Identity is a forgeable cookie** until 0.4. Anyone who can reach the server can act as any member; do not expose it publicly yet.
 - **Next.js version.** `AGENTS.md` warns this Next.js differs from common knowledge; read `node_modules/next/dist/docs/` before touching routing, caching or the standalone build.

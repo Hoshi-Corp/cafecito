@@ -21,7 +21,7 @@ import {
   type MeetWindow,
   type WeekLayout,
 } from "@/lib/availability";
-import { resetDemo, updateGroup, updateMember, useGroup } from "@/lib/store";
+import { retryLoad, signInAs, updateGroup, updateMember, useGroup, useLoadFailed } from "@/lib/store";
 import { SLOT_OPTIONS, type Group, type Mark, type Member, type OverrideMark } from "@/lib/types";
 import { WeekGrid, type CellRange, type GridColumn, type GridRow } from "./WeekGrid";
 
@@ -70,8 +70,23 @@ const quantumNow = (prev?: number) => {
 
 export function GroupApp() {
   const group = useGroup();
-  // The demo group lives in localStorage, so there is nothing to render on the server.
-  if (!group) return <main className="p-6 text-muted">Loading…</main>;
+  const failed = useLoadFailed();
+  // The group is fetched from the server in the browser, so there is nothing to render before that.
+  if (!group)
+    return (
+      <main className="p-6 text-muted">
+        {failed ? (
+          <>
+            Could not load the group.{" "}
+            <button className="underline" onClick={retryLoad}>
+              Retry
+            </button>
+          </>
+        ) : (
+          "Loading…"
+        )}
+      </main>
+    );
   return <GroupView group={group} />;
 }
 
@@ -88,7 +103,6 @@ function GroupView({ group }: { group: Group }) {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, []);
-  const [meId, setMeId] = useState(group.members[0].id);
   const [tab, setTab] = useState<Tab>("group");
   const [weekOffset, setWeekOffset] = useState(0);
   const [allHours, setAllHours] = useState(false);
@@ -96,7 +110,7 @@ function GroupView({ group }: { group: Group }) {
   const [scrollTouches, setScrollTouches] = useState(false);
   const [selectedQ, setSelectedQ] = useState<number | null>(null);
 
-  const me = group.members.find((m) => m.id === meId) ?? group.members[0];
+  const me = group.members.find((m) => m.id === group.meId) ?? group.members[0];
   const zone = me.timeZone;
   const thisWeek = weekStartOf(now, zone);
   const weekStart = addWeeks(thisWeek, weekOffset);
@@ -357,7 +371,6 @@ function GroupView({ group }: { group: Group }) {
       <Settings
         group={group}
         me={me}
-        onActAs={setMeId}
         allHours={allHours}
         onAllHours={setAllHours}
       />
@@ -499,13 +512,11 @@ function SlotDetail({
 function Settings({
   group,
   me,
-  onActAs,
   allHours,
   onAllHours,
 }: {
   group: Group;
   me: Member;
-  onActAs: (id: string) => void;
   allHours: boolean;
   onAllHours: (value: boolean) => void;
 }) {
@@ -555,16 +566,17 @@ function Settings({
           </label>
         </div>
         <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-xs text-muted">Slot size (whole group)</legend>
+          <legend className="mb-1 text-xs text-muted">Slot size (whole group, owner only)</legend>
           <div className="flex gap-1">
             {SLOT_OPTIONS.map((s) => (
               <button
                 key={s}
                 aria-pressed={group.slotMinutes === s}
-                onClick={() => updateGroup((g) => ({ ...g, slotMinutes: s }))}
+                disabled={me.id !== group.ownerId}
+                onClick={() => updateGroup({ slotMinutes: s })}
                 className={`flex-1 rounded-md border px-2 py-1 ${
                   group.slotMinutes === s ? "border-foreground font-medium" : "border-line text-muted"
-                }`}
+                } disabled:opacity-50`}
               >
                 {s === 60 ? "1 h" : `${s} min`}
               </button>
@@ -577,10 +589,10 @@ function Settings({
         </label>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs text-muted">
-        <span>Demo data, saved in this browser only.</span>
+        <span>Shared with everyone using this server. No sign-in yet, so anyone can act as anyone.</span>
         <label className="flex items-center gap-1.5">
           Act as
-          <select className={field} value={me.id} onChange={(e) => onActAs(e.target.value)}>
+          <select className={field} value={me.id} onChange={(e) => signInAs(e.target.value)}>
             {group.members.map((m) => (
               <option key={m.id} value={m.id}>
                 {nameOf(m)}
@@ -588,9 +600,6 @@ function Settings({
             ))}
           </select>
         </label>
-        <button className="ml-auto underline" onClick={resetDemo}>
-          Reset demo
-        </button>
       </div>
     </details>
   );
