@@ -40,4 +40,33 @@ export const MIGRATIONS = [
     revoked_at INTEGER
   );
   `,
+  // 1.0: overrides as non-overlapping [start_q, end_q) ranges, built from runs of equal marks in the per-quantum rows;
+  // session devices and idle expiry; optional recovery email and one-time sign-in links.
+  `
+  CREATE TABLE override_range (
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    start_q INTEGER NOT NULL,
+    end_q INTEGER NOT NULL CHECK (end_q > start_q),
+    mark TEXT NOT NULL CHECK (mark IN ('f', 'm', 'b')),
+    PRIMARY KEY (member_id, start_q)
+  ) WITHOUT ROWID;
+  INSERT INTO override_range
+    SELECT member_id, MIN(q), MAX(q) + 1, mark
+    FROM (SELECT member_id, q, mark, q - ROW_NUMBER() OVER (PARTITION BY member_id, mark ORDER BY q) run FROM override)
+    GROUP BY member_id, mark, run;
+  DROP TABLE override;
+  ALTER TABLE override_range RENAME TO override;
+
+  ALTER TABLE session ADD COLUMN device TEXT NOT NULL DEFAULT '';
+  ALTER TABLE session ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE session ADD COLUMN last_seen INTEGER NOT NULL DEFAULT 0;
+  UPDATE session SET created_at = unixepoch() * 1000, last_seen = unixepoch() * 1000;
+
+  ALTER TABLE member ADD COLUMN email TEXT;
+  CREATE TABLE sign_in_link (
+    token_hash TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  ) WITHOUT ROWID;
+  `,
 ];

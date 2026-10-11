@@ -13,6 +13,7 @@
   --free: #2f9e6a;
   --maybe: #e0a43a;
   --busy: #b9aea2;
+  --danger: #b42318;
 }
 
 @theme inline {
@@ -25,6 +26,8 @@
   --color-accent: var(--accent);
   --color-free: var(--free);
   --color-maybe: var(--maybe);
+  --color-heat-full: var(--heat-full);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -43,6 +46,7 @@
     --free: #3fbf85;
     --maybe: #d9a441;
     --busy: #5a4d44;
+    --danger: #f87171;
   }
 }
 

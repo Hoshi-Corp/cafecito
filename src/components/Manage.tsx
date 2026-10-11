@@ -7,7 +7,7 @@ import { field } from "./Entry";
 
 type Invite = { id: string; expiresAt: number; maxUses: number | null; uses: number };
 
-const call = (path: string, method: string, body?: unknown) =>
+export const call = (path: string, method: string, body?: unknown) =>
   fetch(`/api/groups/me${path}`, {
     method,
     headers: { "content-type": "application/json" },
@@ -71,7 +71,7 @@ export function Manage({ group }: { group: Group }) {
           Create invite link
         </button>
       </div>
-      {error && <p role="alert" className="text-busy">{error}</p>}
+      {error && <p role="alert" className="text-danger">{error}</p>}
       {link && (
         <label className="flex flex-col gap-1 text-xs text-muted">
           Copy this link now; it is not shown again.

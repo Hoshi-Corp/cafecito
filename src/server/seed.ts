@@ -37,7 +37,7 @@ export function seed(db: Db) {
   ];
   db.transaction(() =>
     members.forEach(([id, name, color, zone, role, ranges], i) =>
-      (insert.run(id, name, color, zone, role, pattern(ranges), i), startSession(db, id, `demo-${id}`)),
+      (insert.run(id, name, color, zone, role, pattern(ranges), i), startSession(db, id, "Demo", `demo-${id}`)),
     ),
   )();
 }

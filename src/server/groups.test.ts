@@ -98,7 +98,7 @@ describe("input limits", () => {
 describe("sessions", () => {
   it("knows a member by the token, never stores it, and rejects anything else", () => {
     const db = fresh();
-    expect(resolveSession(db, "demo-camille")).toEqual({ memberId: "camille", groupId: "demo" });
+    expect(resolveSession(db, "demo-camille")).toMatchObject({ memberId: "camille", groupId: "demo" });
     const token = startSession(db, "diego");
     expect(resolveSession(db, token).memberId).toBe("diego");
     expect(db.prepare(`SELECT count(*) n FROM session WHERE token_hash = ?`).get(token)).toEqual({ n: 0 });
@@ -111,7 +111,7 @@ describe("groups and invites", () => {
   it("creates a group whose creator is the owner, signed in", () => {
     const db = openDb(":memory:");
     const { groupId, memberId, token } = createGroup(db, { ...profile, groupName: " Climbers " });
-    expect(resolveSession(db, token)).toEqual({ memberId, groupId });
+    expect(resolveSession(db, token)).toMatchObject({ memberId, groupId });
     expect(loadGroup(db, groupId, memberId)).toMatchObject({ name: "Climbers", ownerId: memberId, slotMinutes: 30 });
     expect(loadGroup(db, groupId, memberId).members[0]).toMatchObject({ name: "Zed", timeZone: "Europe/Paris" });
   });

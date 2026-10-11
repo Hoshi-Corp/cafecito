@@ -24,6 +24,7 @@ afterEach(cleanup);
 function setup(props: Partial<Parameters<typeof WeekGrid>[0]> = {}) {
   const view = render(
     <WeekGrid
+      label="Test grid"
       columns={columns}
       rows={rows}
       rowHeight={10}
@@ -155,12 +156,32 @@ describe("WeekGrid", () => {
     expect(onPaint).toHaveBeenCalledWith({ col0: 2, col1: 2, row0: 0, row1: 0 });
   });
 
+  it("paints the cells Shift and an arrow key move across, and only moves without Shift", () => {
+    const onPaint = vi.fn();
+    const { cell } = setup({ onPaint });
+    act(() => cell(0, 0).focus());
+    fireEvent.keyDown(cell(0, 0), { key: "ArrowDown", shiftKey: true });
+    expect(onPaint).toHaveBeenCalledWith({ col0: 0, col1: 0, row0: 0, row1: 1 });
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft", shiftKey: true }); // at the edge: just this cell
+    expect(onPaint).toHaveBeenLastCalledWith({ col0: 0, col1: 0, row0: 1, row1: 1 });
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    expect(onPaint).toHaveBeenCalledTimes(2);
+  });
+
+  it("names the grid, explains the keys, and marks the selected cell as pressed", () => {
+    const { getByRole, cell, getByText } = setup({ onSelect: vi.fn(), selected: { col: 1, row: 0 } });
+    expect(getByRole("group", { name: "Test grid" }).getAttribute("aria-describedby")).toBeTruthy();
+    expect(getByText(/Enter or Space shows who is free/)).toBeTruthy();
+    expect(cell(1, 0).getAttribute("aria-pressed")).toBe("true");
+    expect(cell(0, 0).getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("keeps the focused cell inside the grid when rows are removed", () => {
     const onSelect = vi.fn();
     const { cell, rerender } = setup({ onSelect });
     act(() => cell(2, 2).focus());
     rerender(
-      <WeekGrid columns={columns} rows={rows.slice(0, 1)} rowHeight={10} cellStyle={() => undefined} onSelect={onSelect} />,
+      <WeekGrid label="Test grid" columns={columns} rows={rows.slice(0, 1)} rowHeight={10} cellStyle={() => undefined} onSelect={onSelect} />,
     );
     expect(cell(2, 0).tabIndex).toBe(0);
     fireEvent.keyDown(cell(2, 0), { key: "Enter" });

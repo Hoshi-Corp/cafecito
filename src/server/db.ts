@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { MIGRATIONS } from "./schema";
+import { DAY_MS, prune } from "./groups";
 import { seed } from "./seed";
 
 export type Db = Database.Database;
@@ -29,6 +30,8 @@ export function getDb(): Db {
     const db = openDb(process.env.CAFECITO_DB ?? "data/cafecito.db");
     // Demo data is opt-in: it comes with sessions anyone can use (see seed.ts).
     if (process.env.CAFECITO_DEMO === "1" && !db.prepare(`SELECT 1 FROM "group" LIMIT 1`).get()) seed(db);
+    prune(db);
+    setInterval(() => prune(db), DAY_MS).unref();
     globalForDb.cafecitoDb = db;
   }
   return globalForDb.cafecitoDb;

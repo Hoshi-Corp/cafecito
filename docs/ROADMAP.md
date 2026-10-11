@@ -18,7 +18,7 @@ Status as of 2026-10-11. Release dates appear only once a release has shipped (s
 
 ## Built, awaiting release
 
-Both are on `main` and ship with the next manual release.
+All three ship with the next manual release (a `major` bump makes it 1.0.0).
 
 ### 0.4 Groups and invites
 - ✅ Create a group; the owner generates, lists and revokes invite links (expiring, optional use limit). Tokens are stored hashed and shown once.
@@ -38,17 +38,15 @@ Exit: a new person can go from invite link to filled-in week in under two minute
 
 Exit: a change made on one device appears on another within about a second. Measured about 30 ms between two browser sessions on one machine; **not measured across a real network or reverse proxy**.
 
-## Next
-
 ### 1.0 Self-hosted release
-- Optional email magic-link recovery when SMTP is configured; the app works fully without it.
-- Rate limiting on join and sign-in; session list with "sign out other devices".
-- Carried over from 0.2: store overrides as ranges and drop past ones (today one row per quantum, never pruned).
-- Export my data; delete my account and data.
-- Deployment guide, upgrade notes, backup and restore runbook.
-- Accessibility pass (keyboard painting, screen-reader labels for slots, contrast of heatmap shades).
+- ✅ Optional email sign-in links for recovery when SMTP is configured (`SMTP_URL`, `SMTP_FROM`, `CAFECITO_URL`); the app works fully without it. Links are single use, last 30 minutes and are spent by a click, so mail scanners cannot use them.
+- ✅ Rate limiting on invite lookups, joins, group creation and sign-in; device list with "sign out other devices"; sessions expire after 180 days unused.
+- ✅ Carried over from 0.2: overrides stored as ranges (migration 3 converts existing rows); a daily prune drops those that ended over a week ago.
+- ✅ Export my data (JSON file); delete my account and data (an owner's group passes to the earliest member, or is deleted when nobody is left).
+- ✅ [Deployment guide](DEPLOY.md) with Caddy for HTTPS, upgrade notes, backup and restore runbook. The backup script and restore steps were run against the built image.
+- ✅ Accessibility pass: Shift+arrow paints while moving, grids are named and explain their keys, heatmap cells say "3 of 5 free, 1 maybe", the faintest heatmap shade went from 1.2:1 to 1.5:1 against an empty cell, the "Everyone" text from 3.3:1 to 6.5:1, and error messages got a real color.
 
-Exit: a non-developer friend can run it from the guide; security review of auth and write paths done.
+Exit: a non-developer friend can run it from the guide (**not done yet**: the guide is written for that reader and its commands were tested, but nobody outside the project has followed it); security review of auth and write paths done ([SECURITY.md](SECURITY.md); it found and fixed one login-CSRF gap).
 
 ## Possible future releases
 

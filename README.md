@@ -16,6 +16,8 @@ npm run dev
 
 Open http://localhost:4174. `npm test` runs the tests; `npm test -- --coverage` also enforces the 85% coverage threshold CI requires.
 
+**To host it for your group**, follow the [deployment guide](docs/DEPLOY.md): one server, Docker, a domain, about 30 minutes.
+
 ## Screenshots
 
 | Group heatmap and best times | Typical week |
@@ -37,7 +39,7 @@ The screenshots come from the demo data (`CAFECITO_DEMO=1`, below).
 | 0.3 | Shared SQLite storage and per-member write API | 2026-10-11 |
 | 0.4 | Groups, invite links, real sessions | Built, not released yet |
 | 0.5 | Live updates over Server-Sent Events | Built, not released yet |
-| 1.0 | Self-hosted release: recovery, rate limits, export, accessibility | Not scheduled |
+| 1.0 | Self-hosted release: recovery, rate limits, export, accessibility | Built, not released yet |
 
 Dates are release dates, taken from the git tags. A release ships when its exit criteria in the [roadmap](docs/ROADMAP.md) are met, so unreleased rows have no date.
 
@@ -51,6 +53,8 @@ Releases 0.4 and 0.5 are built on `main`. Opening the app with no session shows 
 
 **Demo data:** `CAFECITO_DEMO=1 npm run dev` on an empty database seeds the "Café crew" group. Set the cookie `cafecito_session=demo-you` (or `demo-camille`, `demo-diego`, `demo-sofia`, `demo-kenji`) to sign in as that member. Never set this on a server other people can reach: the tokens are public.
 
+**1.0** is built, not released yet. Settings has a **Your account** section: an optional recovery email (when the server has SMTP settings), the list of signed-in devices with **Sign out other devices**, **Export my data** and **Delete my account**. Someone who lost their device asks for a sign-in link from the start page. Invite links, joins, group creation and sign-in are rate-limited per address; sessions unused for 180 days expire. Date-specific availability is stored as ranges and pruned a week after it ends. The grids can be painted from the keyboard (Shift with an arrow paints while moving) and every slot has a screen-reader label. The auth review is in [docs/SECURITY.md](docs/SECURITY.md).
+
 ## How availability works
 
 - Availability is stored in 15-minute quanta, so the group's slot size (15 min, 30 min or 1 h) only changes how the grid is drawn and painted.
@@ -61,23 +65,7 @@ The logic lives in `src/lib/availability.ts`.
 
 ## Data and backups
 
-The database is created and migrated on first start (`src/server/schema.ts`) and seeded with the demo group. In Docker it lives in the `cafecito-data` volume, mounted at `/data`. Back it up with SQLite's online backup, which is safe while the app runs:
-
-```bash
-docker run --rm -v cafecito-data:/data -v "$PWD":/backup alpine \
-  sh -c "apk add -q sqlite && sqlite3 /data/cafecito.db \".backup /backup/cafecito.db\""
-```
-
-To restore, stop the container, replace the database in the volume (dropping the `-wal` and `-shm` files beside it, and handing the file to the `node` user, uid 1000), then start it again:
-
-```bash
-docker compose down
-docker run --rm -v cafecito-data:/data -v "$PWD":/backup alpine sh -c \
-  "rm -f /data/cafecito.db-wal /data/cafecito.db-shm && cp /backup/cafecito.db /data/cafecito.db && chown 1000:1000 /data/cafecito.db"
-docker compose up -d
-```
-
-Backup and restore were tested once against the built image: a change made after the backup was gone after the restore.
+The database is created and migrated on first start (`src/server/schema.ts`); demo data is only added with `CAFECITO_DEMO=1`. In Docker it lives in a volume mounted at `/data`. The [deployment guide](docs/DEPLOY.md#4-backups) has a nightly backup script (SQLite's online backup, safe while the app runs) and the restore steps; both were run against the built image for 1.0, and a change made after the backup was gone after the restore.
 
 ## CI, releases and Docker
 
@@ -103,3 +91,5 @@ docker compose up -d
 
 - [Architecture](docs/ARCHITECTURE.md): concepts, rules, data model, target design.
 - [Roadmap](docs/ROADMAP.md): releases 0.2 to 1.0 and possible future releases.
+- [Deployment guide](docs/DEPLOY.md): install with HTTPS, email, backups, upgrades and upgrade notes.
+- [Security](docs/SECURITY.md): review of auth and write paths, known limits, how to report a problem.

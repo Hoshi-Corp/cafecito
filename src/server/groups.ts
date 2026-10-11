@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { IANAZone } from "luxon";
 import type { Db } from "./db";
 import { disconnect } from "./events";
-import { EMPTY_PATTERN, QUANTA_PER_WEEK } from "../lib/availability";
+import { EMPTY_PATTERN, QUANTA_PER_WEEK, toQuantum } from "../lib/availability";
 import { SLOT_OPTIONS, type Group, type OverrideChange, type Member, type OverrideMark, type SlotMinutes } from "../lib/types";
 
 export class HttpError extends Error {
@@ -14,7 +14,9 @@ export class HttpError extends Error {
   }
 }
 
-const bad = (message: string) => new HttpError(400, message);
+export const bad = (message: string) => new HttpError(400, message);
+
+export const DAY_MS = 24 * 60 * 60 * 1000;
 
 type MemberRow = {
   id: string;
@@ -31,12 +33,14 @@ function loadMembers(db: Db, groupId: string, onlyId?: string): Member[] {
     )
     .all(groupId, onlyId ?? null, onlyId ?? null) as MemberRow[];
   const overrides = new Map<string, Record<number, OverrideMark>>();
+  // shortcut: stored as ranges but sent one key per quantum, as the client expects; send ranges if payloads grow.
   for (const o of db
     .prepare(
-      `SELECT member_id, q, mark FROM override WHERE member_id IN (SELECT id FROM member WHERE group_id = ? AND (? IS NULL OR id = ?))`,
+      `SELECT member_id, start_q, end_q, mark FROM override WHERE member_id IN (SELECT id FROM member WHERE group_id = ? AND (? IS NULL OR id = ?))`,
     )
-    .all(groupId, onlyId ?? null, onlyId ?? null) as { member_id: string; q: number; mark: OverrideMark }[]) {
-    (overrides.get(o.member_id) ?? overrides.set(o.member_id, {}).get(o.member_id)!)[o.q] = o.mark;
+    .all(groupId, onlyId ?? null, onlyId ?? null) as { member_id: string; start_q: number; end_q: number; mark: OverrideMark }[]) {
+    const marks = overrides.get(o.member_id) ?? overrides.set(o.member_id, {}).get(o.member_id)!;
+    for (let q = o.start_q; q < o.end_q; q++) marks[q] = o.mark;
   }
   return rows.map((r) => ({
     id: r.id,
@@ -54,43 +58,71 @@ export function loadGroup(db: Db, id: string, meId: string): Group {
     | undefined;
   if (!g) throw new HttpError(404, "No such group");
   const ownerId = (db.prepare(`SELECT id FROM member WHERE group_id = ? AND role = 'owner'`).get(id) as { id: string }).id;
-  return { id: g.id, name: g.name, slotMinutes: g.slot_minutes, members: loadMembers(db, id), meId, ownerId };
+  // The email is only ever sent to its owner, never inside `members`.
+  const { email } = db.prepare(`SELECT email FROM member WHERE id = ?`).get(meId) as { email: string | null };
+  return { id: g.id, name: g.name, slotMinutes: g.slot_minutes, members: loadMembers(db, id), meId, ownerId, email };
 }
 
 /** One member, as sent to the group's other browsers after a write. */
 export const loadMember = (db: Db, groupId: string, memberId: string) => loadMembers(db, groupId, memberId)[0];
 
-const hash = (token: string) => createHash("sha256").update(token).digest("hex");
+export const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 
-/** Who a session token belongs to. The token is the credential; only its hash is stored. */
-export function resolveSession(db: Db, token: string | undefined) {
+/** A session unused this long is gone; using it pushes the limit back. */
+export const SESSION_IDLE_MS = 180 * DAY_MS;
+
+/**
+ * Who a session token belongs to. The token is the credential; only its hash is stored.
+ * `refreshed` says the session's last use was just recorded (at most daily), so the caller can renew the cookie.
+ */
+export function resolveSession(db: Db, token: string | undefined, now = Date.now()) {
+  const tokenHash = token ? hash(token) : "";
   const row = token
     ? (db
-        .prepare(`SELECT m.id memberId, m.group_id groupId FROM session s JOIN member m ON m.id = s.member_id WHERE s.token_hash = ?`)
-        .get(hash(token)) as { memberId: string; groupId: string } | undefined)
+        .prepare(
+          `SELECT m.id memberId, m.group_id groupId, s.last_seen lastSeen FROM session s JOIN member m ON m.id = s.member_id
+           WHERE s.token_hash = ? AND s.last_seen > ?`,
+        )
+        .get(tokenHash, now - SESSION_IDLE_MS) as { memberId: string; groupId: string; lastSeen: number } | undefined)
     : undefined;
   if (!row) throw new HttpError(401, "Not signed in");
-  return row;
+  const refreshed = now - row.lastSeen > DAY_MS;
+  if (refreshed) db.prepare(`UPDATE session SET last_seen = ? WHERE token_hash = ?`).run(now, tokenHash);
+  return { memberId: row.memberId, groupId: row.groupId, tokenHash, refreshed };
 }
 
-/** Starts a session for a member and returns the token to set as the cookie. */
-export function startSession(db: Db, memberId: string, token = randomBytes(32).toString("base64url")) {
-  db.prepare(`INSERT INTO session (token_hash, member_id) VALUES (?, ?)`).run(hash(token), memberId);
+/** Starts a session for a member and returns the token to set as the cookie. `device` labels it in the device list. */
+export function startSession(
+  db: Db,
+  memberId: string,
+  device = "",
+  token = randomBytes(32).toString("base64url"),
+  now = Date.now(),
+) {
+  db.prepare(`INSERT INTO session (token_hash, member_id, device, created_at, last_seen) VALUES (?, ?, ?, ?, ?)`).run(
+    hash(token), memberId, device.slice(0, 100), now, now,
+  );
   return token;
+}
+
+/** A trimmed, lower-cased address, or null for none. Separators are refused, since mail libraries split on them. */
+export function normalizeEmail(email: unknown): string | null {
+  if (email === null || email === "") return null;
+  const e = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (e.length > 254 || !/^[^\s@,;<>"()]+@[^\s@,;<>"()]+\.[^\s@,;<>"()]+$/.test(e)) throw bad("Invalid email address");
+  return e;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-export type ProfilePatch = { name?: string; color?: string; timeZone?: string; pattern?: string };
-
-/** Replace the caller's own profile fields. Only the member's own row is ever touched. */
+/** Replace the caller's own profile fields (and recovery email). Only the member's own row is ever touched. */
 export function updateMe(db: Db, memberId: string, body: unknown) {
   if (!isObject(body)) throw bad("Expected an object");
-  const { name, color, timeZone, pattern } = body;
+  const { name, color, timeZone, pattern, email } = body;
   const set: string[] = [];
-  const args: string[] = [];
-  const field = (column: string, value: string) => (set.push(`${column} = ?`), args.push(value));
+  const args: (string | null)[] = [];
+  const field = (column: string, value: string | null) => (set.push(`${column} = ?`), args.push(value));
   if (name !== undefined) {
     if (typeof name !== "string" || name.length > 60) throw bad("Invalid name");
     field("name", name);
@@ -108,6 +140,7 @@ export function updateMe(db: Db, memberId: string, body: unknown) {
       throw bad("Invalid pattern");
     field("pattern", pattern);
   }
+  if (email !== undefined) field("email", normalizeEmail(email));
   if (set.length) db.prepare(`UPDATE member SET ${set.join(", ")} WHERE id = ?`).run(...args, memberId);
 }
 
@@ -127,19 +160,49 @@ export function patchOverrides(db: Db, memberId: string, body: unknown) {
   if (!entries.every(([q, mark]) => isQuantum(q) && (mark === "f" || mark === "m" || mark === "b")))
     throw bad("Invalid override");
   if (!remove.every(isQuantum)) throw bad("Invalid override");
-  const upsert = db.prepare(
-    `INSERT INTO override (member_id, q, mark) VALUES (?, ?, ?)
-     ON CONFLICT (member_id, q) DO UPDATE SET mark = excluded.mark`,
-  );
-  const del = db.prepare(`DELETE FROM override WHERE member_id = ? AND q = ?`);
-  db.transaction(() => {
-    for (const q of remove) del.run(memberId, q);
-    for (const [q, mark] of entries) upsert.run(memberId, q, mark);
-  })();
+  const touched = [...remove, ...entries.map(([q]) => q)];
+  if (touched.length) {
+    // Rewrite the ranges around the change, including the ones just before and after it so equal marks merge.
+    const lo = Math.min(...touched);
+    const hi = Math.max(...touched) + 1;
+    const near = `member_id = ? AND end_q >= ? AND start_q <= ?`;
+    db.transaction(() => {
+      const marks = new Map<number, OverrideMark>();
+      for (const r of db.prepare(`SELECT start_q s, end_q e, mark FROM override WHERE ${near}`).all(memberId, lo, hi) as {
+        s: number;
+        e: number;
+        mark: OverrideMark;
+      }[])
+        for (let q = r.s; q < r.e; q++) marks.set(q, r.mark);
+      for (const q of remove) marks.delete(q);
+      for (const [q, mark] of entries) marks.set(q, mark as OverrideMark);
+      db.prepare(`DELETE FROM override WHERE ${near}`).run(memberId, lo, hi);
+      const insert = db.prepare(`INSERT INTO override (member_id, start_q, end_q, mark) VALUES (?, ?, ?, ?)`);
+      for (const [s, e, mark] of toRanges(marks)) insert.run(memberId, s, e, mark);
+    })();
+  }
   return { set: Object.fromEntries(entries), remove } as OverrideChange;
 }
 
-function assertOwner(db: Db, memberId: string) {
+/** Runs of consecutive quanta with the same mark, as [start, end) ranges. */
+export function toRanges(marks: Map<number, OverrideMark>) {
+  const ranges: [number, number, OverrideMark][] = [];
+  for (const q of [...marks.keys()].sort((a, b) => a - b)) {
+    const last = ranges.at(-1);
+    if (last && last[1] === q && last[2] === marks.get(q)) last[1]++;
+    else ranges.push([q, q + 1, marks.get(q)!]);
+  }
+  return ranges;
+}
+
+/** Daily housekeeping: drops overrides that ended over a week ago (past weeks show the typical week), idle sessions and used-up sign-in links. */
+export function prune(db: Db, now = Date.now()) {
+  db.prepare(`DELETE FROM override WHERE end_q < ?`).run(toQuantum(now - 8 * DAY_MS));
+  db.prepare(`DELETE FROM session WHERE last_seen <= ?`).run(now - SESSION_IDLE_MS);
+  db.prepare(`DELETE FROM sign_in_link WHERE expires_at <= ?`).run(now);
+}
+
+export function assertOwner(db: Db, memberId: string) {
   const role = (db.prepare(`SELECT role FROM member WHERE id = ?`).get(memberId) as { role: string }).role;
   if (role !== "owner") throw new HttpError(403, "Only the owner can do this");
 }
@@ -156,7 +219,7 @@ export function updateGroup(db: Db, groupId: string, memberId: string, body: unk
 export const MAX_MEMBERS = 12;
 
 /** Adds a member, validating the profile fields like any later edit. Throws (and adds nothing) if invalid or the group is full. */
-function addMember(db: Db, groupId: string, role: "owner" | "member", body: unknown) {
+function addMember(db: Db, groupId: string, role: "owner" | "member", body: unknown, device: string) {
   if (!isObject(body)) throw bad("Expected an object");
   if (typeof body.name !== "string" || !body.name.trim()) throw bad("Enter a name");
   const id = randomUUID();
@@ -170,23 +233,22 @@ function addMember(db: Db, groupId: string, role: "owner" | "member", body: unkn
       `INSERT INTO member (id, group_id, name, color, time_zone, role, pattern, position) VALUES (?, ?, '', '#c2410c', 'UTC', ?, ?, ?)`,
     ).run(id, groupId, role, EMPTY_PATTERN, next);
     updateMe(db, id, { ...body, pattern: undefined });
-    return { memberId: id, token: startSession(db, id) };
+    return { memberId: id, token: startSession(db, id, device) };
   })();
 }
 
 /** A new group with its creator as owner. */
-export function createGroup(db: Db, body: unknown) {
+export function createGroup(db: Db, body: unknown, device = "") {
   if (!isObject(body)) throw bad("Expected an object");
   const { groupName } = body;
   if (typeof groupName !== "string" || !groupName.trim() || groupName.length > 60) throw bad("Invalid group name");
   const groupId = randomUUID();
   return db.transaction(() => {
     db.prepare(`INSERT INTO "group" (id, name, slot_minutes) VALUES (?, ?, 30)`).run(groupId, groupName.trim());
-    return { groupId, ...addMember(db, groupId, "owner", body) };
+    return { groupId, ...addMember(db, groupId, "owner", body, device) };
   })();
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const LIVE = `revoked_at IS NULL AND expires_at > ? AND (max_uses IS NULL OR uses < max_uses)`;
 
 /** The owner makes an invite. The token is returned once; only its hash is kept. */
@@ -234,10 +296,10 @@ export function inviteInfo(db: Db, token: string, now = Date.now()) {
   return { groupName, members: loadMembers(db, groupId).map((m) => m.name) };
 }
 
-export function joinGroup(db: Db, token: string, body: unknown, now = Date.now()) {
+export function joinGroup(db: Db, token: string, body: unknown, now = Date.now(), device = "") {
   return db.transaction(() => {
     const invite = liveInvite(db, token, now);
-    const joined = addMember(db, invite.groupId, "member", body);
+    const joined = addMember(db, invite.groupId, "member", body, device);
     db.prepare(`UPDATE invite SET uses = uses + 1 WHERE id = ?`).run(invite.id);
     return { groupId: invite.groupId, ...joined };
   })();
