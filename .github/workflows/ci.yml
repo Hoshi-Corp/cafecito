@@ -27,7 +27,8 @@ jobs:
           push: false
           tags: cafecito:ci
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Some runs get a read-only Actions cache; don't fail the build on it.
+          cache-to: type=gha,mode=max,ignore-error=true
 
       - name: Validate docker-compose file
         run: docker compose -f docker-compose.yml config -q
