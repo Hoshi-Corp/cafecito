@@ -2,14 +2,14 @@
 # standalone server output (a minimal server.js plus the node_modules it traces)
 # in a small image. The demo keeps data in the browser, so the container is
 # stateless until shared storage lands (see docs/ROADMAP.md, 0.3).
-FROM node:24-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:24-alpine
+FROM node:25-alpine
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build /src/.next/standalone ./
