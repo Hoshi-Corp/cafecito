@@ -1,5 +1,10 @@
 # Cafecito
 
+[![CI](https://github.com/Hoshi-Corp/cafecito/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Hoshi-Corp/cafecito/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Hoshi-Corp/cafecito)](https://github.com/Hoshi-Corp/cafecito/releases/latest)
+![Coverage gate: 85% minimum](https://img.shields.io/badge/coverage-%E2%89%A585%25-brightgreen)
+![Node 26](https://img.shields.io/badge/node-26-339933?logo=node.js&logoColor=white)
+
 A shared availability calendar for a group of friends: everyone marks when they are free, and the group view overlays it into a heatmap.
 
 ## Run it
