@@ -13,7 +13,7 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       SMTP_FROM: ${SMTP_FROM:-}
     ports:
-      - "127.0.0.1:${PORT:-4174}:4174"
+      - "127.0.0.1:${CAFECITO_PORT:-4174}:4174"
     volumes:
       - cafecito-data:/data
 
