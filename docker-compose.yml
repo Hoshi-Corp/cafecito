@@ -1,0 +1,11 @@
+# Deployment descriptor for the published image. Bound to localhost only so a
+# reverse proxy on the same host (nginx, Caddy) is the public front door.
+# No volume yet: the demo stores data in each browser. Release 0.3 adds one for SQLite.
+services:
+  cafecito:
+    build: .
+    image: ghcr.io/hoshi-corp/cafecito:latest
+    container_name: cafecito
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
