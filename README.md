@@ -1,5 +1,10 @@
 # Cafecito
 
+[![CI](https://github.com/Hoshi-Corp/cafecito/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Hoshi-Corp/cafecito/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Hoshi-Corp/cafecito)](https://github.com/Hoshi-Corp/cafecito/releases/latest)
+![Coverage gate: 85% minimum](https://img.shields.io/badge/coverage-%E2%89%A585%25-brightgreen)
+![Node 26](https://img.shields.io/badge/node-26-339933?logo=node.js&logoColor=white)
+
 A shared availability calendar for a group of friends: everyone marks when they are free, and the group view overlays it into a heatmap.
 
 ## Run it
@@ -9,7 +14,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:4174. `npm test` runs the availability unit tests.
+Open http://localhost:4174. `npm test` runs the tests; `npm test -- --coverage` also enforces the 85% coverage threshold CI requires.
 
 ## Status
 
@@ -47,12 +52,12 @@ Backup and restore were tested once against the built image: a change made after
 
 Same strategy as [Jocasta](https://github.com/masaruhoshi/jocasta): one shared test workflow, a CI check on every change, and a manual release that publishes the image.
 
-- **`test.yml`** (reusable): `npm ci`, lint, type-check, `npm test`. Called by `ci.yml` and `publish.yml`.
+- **`test.yml`** (reusable): `npm ci`, lint, type-check, `npm test -- --coverage` (fails under 85% coverage). Called by `ci.yml` and `publish.yml`.
 - **`ci.yml`**: on every push and pull request to `main`, runs the tests, builds the Docker image without pushing it, and validates `docker-compose.yml`.
 - **`publish.yml`**: run by hand from `main` (*Actions → Release → Run workflow*; other branches are skipped) with a bump of `patch`, `minor`, `major` or `none`. It re-runs the tests, refuses to publish if `main` moved since dispatch, pushes `ghcr.io/hoshi-corp/cafecito:latest` (and `:<version>` for a bump), and only then commits the new `VERSION` to `main`, tags `v<version>` and creates the GitHub release. A failed image build leaves no bump, tag or release behind. `none` refreshes `:latest` only.
 - **Dependabot** checks GitHub Actions, the Dockerfile base images and npm packages weekly.
 
-The `Dockerfile` builds the app and ships only Next.js's standalone server output in a `node:24-alpine` image (non-root, port 4174):
+The `Dockerfile` builds the app and ships only Next.js's standalone server output in a `node:26-alpine` image (non-root, port 4174):
 
 ```bash
 docker build -t cafecito .

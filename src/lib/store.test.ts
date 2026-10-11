@@ -48,4 +48,15 @@ describe("store writes", () => {
     await vi.waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toMatchObject({ url: "/api/groups/demo", body: { slotMinutes: 60 } });
   });
+
+  it("reloads the group from the server when a write is refused", async () => {
+    await setup();
+    let loads = 0;
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method ? { ok: false, status: 403 } : (loads++, { ok: true, json: async () => group }),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    updateGroup({ slotMinutes: 15 });
+    await vi.waitFor(() => expect(loads).toBe(1));
+  });
 });
