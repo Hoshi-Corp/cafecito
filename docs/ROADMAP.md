@@ -62,7 +62,7 @@ Pick a best window, propose it with a title and place; members RSVP yes/maybe/no
 "A new window where everyone is free appeared", "Camille proposed Saturday 10:00", weekly reminder to refresh your week. Web push first; email only if SMTP exists. Every notification type individually mutable.
 
 ### 1.4 Café and restaurant wishlist
-A shared list per group: name, link, notes, who suggested it, votes, "been there" flag. Optionally attach a place to an event (1.2). No maps dependency in the first version; a link is enough.
+A shared list per group: name, link, notes, who suggested it, votes, "been there" flag. Optionally attach a place to an event (1.2). Support for optional link to the map. List of restaurants is kept. Members can score (1-5 stars) the restaurant and add comments.
 
 ### 1.5 Smarter suggestions
 Rank windows by preference as well as headcount: preferred days or times per member, minimum and maximum duration, travel buffer, and "not two outings in the same week". Still explainable: each suggestion says why it ranked where it did.
