@@ -37,7 +37,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # main's ruleset requires a PR; this deploy key is on its bypass
+          # list so the version bump below can be pushed directly.
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
       # Work out the version to publish without touching the repo yet, so a
       # failed image build leaves no bump commit, tag or release behind.
