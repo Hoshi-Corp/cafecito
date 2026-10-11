@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { useId, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
 export interface GridColumn {
   key: string;
@@ -23,6 +23,8 @@ export interface CellRange {
 }
 
 interface Props {
+  /** What the grid shows, for screen readers. */
+  label: string;
   columns: GridColumn[];
   rows: GridRow[];
   rowHeight: number;
@@ -44,6 +46,7 @@ function cellAt(x: number, y: number) {
 }
 
 export function WeekGrid({
+  label,
   columns,
   rows,
   rowHeight,
@@ -57,6 +60,7 @@ export function WeekGrid({
 }: Props) {
   const [drag, setDrag] = useState<{ from: { col: number; row: number }; to: { col: number; row: number } } | null>(null);
   const [focus, setFocus] = useState({ col: 0, row: 0 });
+  const hintId = useId();
   // Rows or columns can shrink (e.g. "Show all 24 hours" off) under the focused cell.
   const cur = { col: Math.min(focus.col, columns.length - 1), row: Math.min(focus.row, rows.length - 1) };
   const range: CellRange | null = drag && {
@@ -84,13 +88,21 @@ export function WeekGrid({
     setDrag(null);
   };
 
-  // One tab stop for the whole grid; arrows move inside it, Enter or Space selects or paints a cell.
+  // One tab stop for the whole grid; arrows move inside it, Enter or Space selects or paints a cell,
+  // and Shift with an arrow paints the cells it moves across.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (step) {
       e.preventDefault();
       const col = Math.max(0, Math.min(columns.length - 1, cur.col + step[0]));
       const row = Math.max(0, Math.min(rows.length - 1, cur.row + step[1]));
+      if (e.shiftKey && onPaint)
+        onPaint({
+          col0: Math.min(cur.col, col),
+          col1: Math.max(cur.col, col),
+          row0: Math.min(cur.row, row),
+          row1: Math.max(cur.row, row),
+        });
       setFocus({ col, row });
       e.currentTarget.querySelector<HTMLElement>(`[data-col="${col}"][data-row="${row}"]`)?.focus();
     } else if (e.key === "Enter" || e.key === " ") {
@@ -103,7 +115,12 @@ export function WeekGrid({
   const template = { gridTemplateColumns: `2.75rem repeat(${columns.length}, minmax(0, 1fr))` };
 
   return (
-    <div className="select-none">
+    <div className="select-none" role="group" aria-label={label} aria-describedby={hintId}>
+      <p id={hintId} className="sr-only">
+        {onPaint
+          ? "Arrow keys move between slots. Enter or Space paints a slot; hold Shift with an arrow key to paint as you move."
+          : "Arrow keys move between slots. Enter or Space shows who is free."}
+      </p>
       <div className="sticky top-0 z-10 grid bg-background pb-1" style={template}>
         <div />
         {columns.map((c) => (
@@ -141,6 +158,7 @@ export function WeekGrid({
                   data-col={col}
                   data-row={row}
                   role={onSelect || onPaint ? "button" : undefined}
+                  aria-pressed={onSelect && !onPaint ? isSelected : undefined}
                   tabIndex={col === cur.col && row === cur.row ? 0 : -1}
                   onFocus={() => setFocus({ col, row })}
                   aria-label={cellLabel?.(col, row)}

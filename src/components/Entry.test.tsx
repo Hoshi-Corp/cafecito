@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { JoinForm, Landing } from "./Entry";
+import { JoinForm, Landing, SignInLink } from "./Entry";
 
 afterEach(() => {
   cleanup();
@@ -51,4 +51,31 @@ it("explains a dead invite link", async () => {
   vi.stubGlobal("fetch", async () => ({ ok: false, status: 404 }));
   render(<JoinForm token="t" />);
   expect(await screen.findByText(/no longer valid/)).toBeTruthy();
+});
+
+it("offers an emailed sign-in link when the server can send email", async () => {
+  const posts: { url: string; body: unknown }[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") posts.push({ url, body: JSON.parse(init.body as string) });
+    return { ok: true, json: async () => ({ enabled: true }) };
+  });
+  render(<Landing />);
+  fireEvent.change(await screen.findByLabelText("Your recovery email"), { target: { value: "ana@example.org" } });
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Email me a sign-in link" })));
+  expect(posts).toEqual([{ url: "/api/sign-in", body: { email: "ana@example.org" } }]);
+  expect(screen.getByRole("status").textContent).toMatch(/on its way/);
+});
+
+it("signs in from an emailed link with a click, or says the link is spent", async () => {
+  const loc = { href: "" };
+  vi.stubGlobal("location", loc);
+  let ok = false;
+  vi.stubGlobal("fetch", async () => ({ ok, json: async () => (ok ? {} : { error: "This sign-in link is no longer valid" }) }));
+  render(<SignInLink token="t" />);
+  const button = screen.getByRole("button", { name: "Sign in on this device" });
+  await act(async () => fireEvent.click(button));
+  expect(screen.getByRole("alert").textContent).toMatch(/no longer valid/);
+  ok = true;
+  await act(async () => fireEvent.click(button));
+  expect(loc.href).toBe("/");
 });

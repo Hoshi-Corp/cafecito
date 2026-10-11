@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { userAgent } from "next/server";
 import { getDb, type Db } from "./db";
 import { publish } from "./events";
 import type { OverrideChange } from "../lib/types";
@@ -6,16 +7,32 @@ import { HttpError, loadMember, resolveSession } from "./groups";
 
 export const SESSION_COOKIE = "cafecito_session";
 
+// Secure (HTTPS-only) when the public address is HTTPS, so a plain-HTTP setup on a home network still works.
 export const setSessionCookie = async (token: string) =>
-  (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
+  (await cookies()).set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.CAFECITO_URL?.startsWith("https:"),
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+
+/** "Firefox on macOS": how a session is named in the device list. */
+export function device(req: Request) {
+  const { browser, os } = userAgent(req);
+  return `${browser.name ?? "Browser"} on ${os.name ?? "an unknown system"}`;
+}
 
 /** The caller's session, checked against the group in the URL ("me" means the caller's own group). */
 export async function authenticate(params: Promise<{ id: string }>) {
   const { id } = await params;
   const db = getDb();
-  const { memberId: meId, groupId } = resolveSession(db, (await cookies()).get(SESSION_COOKIE)?.value);
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const { memberId: meId, groupId, tokenHash, refreshed } = resolveSession(db, token);
   if (id !== "me" && id !== groupId) throw new HttpError(404, "No such group");
-  return { db, groupId, meId };
+  // A session in use keeps its cookie: renewed when the server records the use (at most daily).
+  if (refreshed) await setSessionCookie(token!);
+  return { db, groupId, meId, tokenHash };
 }
 
 export function failure(e: unknown) {
@@ -30,7 +47,7 @@ export function failure(e: unknown) {
  */
 export async function handle(
   params: Promise<{ id: string }>,
-  run: (ctx: { db: Db; groupId: string; meId: string }) => unknown,
+  run: (ctx: { db: Db; groupId: string; meId: string; tokenHash: string }) => unknown,
   change?: "member" | "overrides" | "group",
 ) {
   try {
@@ -45,6 +62,7 @@ export async function handle(
             ? { by: ctx.meId, overrides: out as OverrideChange }
             : { by: ctx.meId, reload: true },
       );
+    if (out instanceof Response) return out;
     // The writer already has its own override change, so it is not echoed back.
     return Response.json(change === "overrides" ? { ok: true } : (out ?? { ok: true }));
   } catch (e) {

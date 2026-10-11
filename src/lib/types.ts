@@ -30,6 +30,10 @@ export interface Group {
   meId: string;
   /** The only member who may change group settings. */
   ownerId: string;
+  /** My recovery email; never sent for anyone else. */
+  email?: string | null;
+  /** Whether this server can send sign-in links by email. */
+  recovery?: boolean;
 }
 
 export interface OverrideChange {

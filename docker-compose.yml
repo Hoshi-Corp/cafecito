@@ -1,12 +1,17 @@
 # Deployment descriptor for the published image. Bound to localhost only so a
 # reverse proxy on the same host (nginx, Caddy) is the public front door.
-# The SQLite database lives in the cafecito-data volume (see the README for backups).
+# The SQLite database lives in the cafecito-data volume (see docs/DEPLOY.md for backups).
 services:
   cafecito:
     build: .
     image: ghcr.io/hoshi-corp/cafecito:latest
     container_name: cafecito
     restart: unless-stopped
+    # Optional settings, see docs/DEPLOY.md: CAFECITO_URL (public address), SMTP_URL and SMTP_FROM (email sign-in links).
+    environment:
+      CAFECITO_URL: ${CAFECITO_URL:-}
+      SMTP_URL: ${SMTP_URL:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "127.0.0.1:${PORT:-4174}:4174"
     volumes:

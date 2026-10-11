@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const jar = new Map<string, string>();
+const cookieSets: string[] = [];
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (jar.has(name) ? { value: jar.get(name) } : undefined),
-    set: (name: string, value: string) => jar.set(name, value),
+    set: (name: string, value: string) => (cookieSets.push(name), jar.set(name, value)),
+    delete: (name: string) => jar.delete(name),
   }),
 }));
+const { sendMail } = vi.hoisted(() => ({ sendMail: vi.fn<(mail: { to: string; text: string }) => Promise<void>>(async () => {}) }));
+vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail }) } }));
 process.env.CAFECITO_DB = ":memory:";
 process.env.CAFECITO_DEMO = "1";
 
@@ -19,8 +23,13 @@ const invite = await import("@/app/api/groups/[id]/invites/[inviteId]/route");
 const member = await import("@/app/api/groups/[id]/members/[memberId]/route");
 const events = await import("@/app/api/groups/[id]/events/route");
 const join = await import("@/app/api/invites/[token]/route");
+const sessions = await import("@/app/api/groups/[id]/me/sessions/route");
+const signIn = await import("@/app/api/sign-in/route");
+const signInLink = await import("@/app/api/sign-in/[token]/route");
 const { handle, SESSION_COOKIE } = await import("./http");
 const { subscribe } = await import("./events");
+const { getDb } = await import("./db");
+const { DAY_MS, startSession } = await import("./groups");
 
 const ctx = <T extends object>(params: T & { id?: string } = {} as T) => ({ params: Promise.resolve({ id: "me", ...params }) });
 const req = (body: unknown = {}, type = "application/json") =>
@@ -166,5 +175,111 @@ describe("live updates", () => {
     expect((await watcher.reader.read()).done).toBe(true);
     jar.clear();
     expect((await events.GET(new Request("http://x/"), ctx())).status).toBe(401);
+  });
+});
+
+describe("my account", () => {
+  const from = (ip: string, body: unknown = {}, headers: Record<string, string> = {}) =>
+    new Request("http://x/", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json", "x-forwarded-for": ip, ...headers },
+    });
+
+  it("names a new session after the browser, lists devices and signs out the others", async () => {
+    jar.clear();
+    const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+    await groups.POST(from("10.0.0.1", { ...profile, groupName: "Devices" }, { "user-agent": ua }));
+    const list = await (await sessions.GET(req(), ctx())).json();
+    expect(list).toEqual([{ device: "Safari on Mac OS", createdAt: expect.any(Number), lastSeen: expect.any(Number), current: true }]);
+    expect(await (await sessions.DELETE(req(), ctx())).json()).toEqual({ signedOut: 0 });
+  });
+
+  it("renews the cookie of a session in use, at most daily", async () => {
+    startSession(getDb(), "kenji", "", "kenji-old", Date.now() - 2 * DAY_MS);
+    jar.set(SESSION_COOKIE, "kenji-old");
+    cookieSets.length = 0;
+    expect((await group.GET(req(), ctx())).status).toBe(200);
+    expect(cookieSets).toEqual([SESSION_COOKIE]);
+    await group.GET(req(), ctx());
+    expect(cookieSets).toHaveLength(1); // just recorded: no second renewal
+  });
+
+  it("downloads my data as a file", async () => {
+    const res = await me.GET(req(), ctx());
+    expect(res.headers.get("content-disposition")).toContain("attachment");
+    expect(await res.json()).toMatchObject({ group: "Café crew", role: "owner", typicalWeek: expect.any(String) });
+  });
+
+  it("deletes my account and signs this browser out", async () => {
+    as("sofia");
+    expect((await me.DELETE(req(), ctx())).status).toBe(200);
+    expect(jar.has(SESSION_COOKIE)).toBe(false);
+    as("you");
+    expect((await get()).members.map((m: { id: string }) => m.id)).not.toContain("sofia");
+  });
+
+  it("rate-limits invite lookups and joins per address", async () => {
+    const lookup = () => join.GET(from("10.0.0.2"), ctx({ token: "nope" }));
+    for (let i = 0; i < 30; i++) expect((await lookup()).status).toBe(404);
+    expect((await lookup()).status).toBe(429);
+    expect((await join.POST(from("10.0.0.2", profile), ctx({ token: "nope" }))).status).toBe(429);
+    expect((await join.GET(from("10.0.0.3"), ctx({ token: "nope" }))).status).toBe(404);
+  });
+});
+
+describe("email sign-in", () => {
+  const ask = (email: unknown, ip = "10.1.0.1") =>
+    signIn.POST(new Request("http://x/", { method: "POST", body: JSON.stringify({ email }), headers: { "content-type": "application/json", "x-forwarded-for": ip } }));
+  const env = { SMTP_URL: "smtp://mail.test", SMTP_FROM: "Cafecito <cafe@mail.test>", CAFECITO_URL: "https://cafe.test/" };
+
+  it("is off, and says so, without SMTP settings", async () => {
+    expect(await signIn.GET().json()).toEqual({ enabled: false });
+    expect((await ask("a@b.co")).status).toBe(404);
+    expect(await get()).toMatchObject({ recovery: false, email: null });
+  });
+
+  it("emails a one-time link to a recovery address, and answers the same for unknown ones", async () => {
+    Object.assign(process.env, env);
+    try {
+      expect(await signIn.GET().json()).toEqual({ enabled: true });
+      await me.PATCH(req({ email: "you@example.org" }), ctx());
+      expect(await get()).toMatchObject({ recovery: true, email: "you@example.org" });
+
+      expect(await (await ask("stranger@example.org")).json()).toEqual({ ok: true });
+      expect(sendMail).not.toHaveBeenCalled();
+      expect((await ask("not an email")).status).toBe(400);
+      expect((await ask("")).status).toBe(400);
+
+      expect(await (await ask("You@Example.org")).json()).toEqual({ ok: true });
+      await vi.waitFor(() => expect(sendMail).toHaveBeenCalledOnce());
+      const mail = sendMail.mock.calls[0][0];
+      expect(mail.to).toBe("you@example.org");
+      const token = mail.text.match(/https:\/\/cafe\.test\/sign-in\/(\S+)/)![1];
+
+      jar.clear();
+      const spend = (type = "application/json") =>
+        signInLink.POST(
+          new Request("http://x/", { method: "POST", body: "{}", headers: { "content-type": type, "x-forwarded-for": "10.1.0.9" } }),
+          ctx({ token }),
+        );
+      expect((await spend("application/x-www-form-urlencoded")).status).toBe(415); // no cross-site form sign-in
+      expect((await spend()).status).toBe(200);
+      expect(await get()).toMatchObject({ meId: "you" });
+      expect((await spend()).status).toBe(404);
+
+      // Per address, whatever the caller's IP: no inbox gets flooded.
+      expect((await ask("you@example.org", "10.1.0.2")).status).toBe(200);
+      expect((await ask("you@example.org", "10.1.0.3")).status).toBe(200);
+      expect((await ask("you@example.org", "10.1.0.4")).status).toBe(429);
+
+      // And for the whole server, whatever the address and IP, so strangers' inboxes cannot be flooded.
+      const statuses = [];
+      for (let i = 0; i < 21; i++) statuses.push((await ask(`s${i}@example.org`, `10.2.0.${i}`)).status);
+      expect(statuses).toContain(429);
+      expect(statuses.at(-1)).toBe(429);
+    } finally {
+      for (const k of Object.keys(env)) delete process.env[k];
+    }
   });
 });

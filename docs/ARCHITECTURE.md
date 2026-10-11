@@ -1,6 +1,6 @@
 # Cafecito: architecture
 
-Audience: contributors. For what is built today, see the [README](../README.md); for what comes next, see the [roadmap](ROADMAP.md).
+Audience: contributors. For what is built today, see the [README](../README.md); for what comes next, see the [roadmap](ROADMAP.md); to run it, see the [deployment guide](DEPLOY.md); for the auth review, see [security](SECURITY.md).
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Cafecito answers one question for a group of friends: **when can we all get toge
 | Quantum | 15 minutes. The only unit availability is stored in. |
 | Slot | What the grid shows: 1, 2 or 4 quanta, set per group (15/30/60 min). A display choice, never a storage format. |
 | Typical week | A member's recurring availability: 672 chars (7 days x 96 quanta, Monday 00:00 first) in the member's own wall-clock time. `f` free, `m` maybe, `.` unmarked. |
-| Override | A date-specific `f`, `m` or `b` (busy) for one quantum, keyed by UTC quantum. Wins over the typical week. |
+| Override | A date-specific `f`, `m` or `b` (busy), keyed by UTC quantum. Wins over the typical week. Stored as ranges, sent to the browser one key per quantum. |
 | Best window | A stretch of at least an hour in the next two weeks where everyone, or (groups of 4+) all but one, is free. |
 
 ## Rules that must not break
@@ -31,13 +31,17 @@ src/lib/types.ts          Member, Group, Mark, SLOT_OPTIONS
 src/lib/availability.ts   quanta math, markAt/slotMark, summarize, bestWindows, paint*
 src/lib/store.ts          client store: useGroup / updateGroup / updateMember, optimistic, per-member writes, SSE listener
 src/server/               SQLite (db, schema + migrations), validated own-rows-only writes, sessions and invites (groups.ts),
-                          in-memory pub/sub (events.ts), request auth (http.ts), opt-in demo data (seed.ts)
-src/app/api/              groups (create), groups/[id] (+ me, me/overrides, invites, members, events), invites/[token] (info, join)
+                          my account: devices, export, deletion, sign-in links (account.ts), in-memory pub/sub (events.ts),
+                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), opt-in demo data (seed.ts)
+src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, invites, members, events),
+                          invites/[token] (info, join), sign-in (+ [token])
 src/app/join/[token]      join screen
+src/app/sign-in/[token]   where an emailed sign-in link lands
 src/components/GroupApp   screens: typical week, dates, group heatmap, best times
-src/components/Entry      create-group and join forms
+src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
+src/components/Account    my account: recovery email, devices, export, delete
 src/components/Manage     owner: invite links, remove people
-src/components/WeekGrid   the paintable grid
+src/components/WeekGrid   the paintable grid (pointer and keyboard)
 ```
 
 `store.ts` is the seam. The UI uses `useGroup`, `updateGroup({ slotMinutes })`, `updateMember`, `useRecentChange` and `useSignedOut`. The caller's identity is the `cafecito_session` cookie; the URL id `me` means "my group", and write routes take no member id, so another member's row cannot be addressed.
@@ -54,32 +58,39 @@ One Docker container, one process, one SQLite file.
 
 ### Data model
 
-As built (0.4). One person belongs to one group; a person in several groups waits for 1.6.
+As built (1.0). One person belongs to one group; a person in several groups waits for 1.6, which is when a `user` table (holding the recovery email) would earn its place.
 
 ```
 group(id, name, slot_minutes)
-member(id, group_id, name, color, time_zone, role, pattern, position)   -- role: owner | member
-override(member_id, q, mark)                                            -- one row per quantum
+member(id, group_id, name, color, time_zone, role, pattern, position, email)   -- role: owner | member; email optional, private
+override(member_id, start_q, end_q, mark)                                      -- non-overlapping [start_q, end_q) ranges
 invite(id, token_hash, group_id, expires_at, max_uses, uses, revoked_at)
-session(token_hash, member_id)                                          -- deleted with the member
+session(token_hash, member_id, device, created_at, last_seen)                  -- deleted with the member
+sign_in_link(token_hash, member_id, expires_at)                                -- single use, 30 minutes
 ```
 
-Planned for 1.0: `user` with an optional email for recovery, session expiry and device list, overrides as ranges.
+A write to overrides rewrites only the ranges around the change, merging equal neighbours. A daily prune deletes overrides that ended more than a week ago, sessions unused for 180 days and expired sign-in links.
 
 ### API
 
 | Call | Purpose |
 |---|---|
 | `POST /api/groups` | Create a group; the creator becomes owner and is signed in |
-| `GET /api/groups/:id` | Group plus every member's availability (`:id` may be `me`) |
+| `GET /api/groups/:id` | Group plus every member's availability (`:id` may be `me`), my recovery email, whether email sign-in is on |
 | `PATCH /api/groups/:id` | Change the slot size (owner) |
-| `PATCH /api/groups/:id/me` | Change my name, color, time zone or typical week |
+| `GET /api/groups/:id/me` | Export my data (a JSON file) |
+| `PATCH /api/groups/:id/me` | Change my name, color, time zone, typical week or recovery email |
+| `DELETE /api/groups/:id/me` | Delete my account and data |
 | `PATCH /api/groups/:id/me/overrides` | Add or remove my overrides |
+| `GET`, `DELETE /api/groups/:id/me/sessions` | List my signed-in devices; sign out the others |
 | `GET`, `POST /api/groups/:id/invites` | List live invites, create one (owner); the token is returned once |
 | `DELETE /api/groups/:id/invites/:inviteId` | Revoke an invite (owner) |
 | `DELETE /api/groups/:id/members/:memberId` | Remove a member (owner) |
 | `GET /api/invites/:token` | What the join screen shows: group name, who is in it |
-| `POST /api/invites/:token/join` | Join a group, creates a session |
+| `POST /api/invites/:token` | Join a group, creates a session |
+| `GET /api/sign-in` | Whether email sign-in is on |
+| `POST /api/sign-in` | Email a sign-in link to a recovery address |
+| `POST /api/sign-in/:token` | Spend a sign-in link, creates a session |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
 Writes are **per member and own-rows-only**. No call replaces the whole group.
@@ -90,19 +101,22 @@ A write that succeeds is published to the group's open streams (`events.ts`, in 
 
 ### Auth
 
-The invite link is the credential: opening it asks for a name and sets a long-lived session cookie. Email magic links are optional and used for device recovery only, so self-hosting needs no mail server. Invite tokens are stored hashed, expire, and can be revoked by the owner.
+The invite link is the credential: opening it asks for a name and sets a session cookie. Sessions expire after 180 days unused; Settings lists a member's devices and signs out the others. Email sign-in links are optional and only recover access to an existing member, so self-hosting needs no mail server. All tokens (sessions, invites, sign-in links) are random and stored hashed. Joining, invite lookups, group creation and sign-in are rate-limited per client address (`limit.ts`). The review of these paths is in [SECURITY.md](SECURITY.md).
 
 ## Design decisions and known gaps
 
 - **Not set up.** A member with nothing marked (`isSetUp` in `availability.ts`) is left out of the heatmap and best times and listed as "not counted yet", instead of counting as busy. It is derived, not stored; the server model may store it explicitly.
 - **Time zone changes.** The typical week is wall-clock, so changing zone keeps "6 pm" as 6 pm by default. Settings offers "keep the same moments", which rotates the week with `shiftPattern`. Overrides are UTC and never move.
-- **Overrides are one key per quantum and never pruned.** Fix: store ranges, prune past ones (moved to 1.0).
+- **Overrides travel one key per quantum.** They are stored as ranges, but the API and the client still use a mark per quantum, so a long busy stretch is a large payload. Send ranges if that ever matters.
 - **`bestWindows` uses a 31-bit mask**, so groups are capped at 12; joining a full group fails with a 409 (0.4).
 - **Repeated hour.** When clocks go back, the grid has one row for the hour that happens twice, so date-specific overrides can only target the first occurrence. The typical week applies to both, and selecting a best time inside the repeated hour still shows who is free (no grid highlight). Pinned by tests in `availability.test.ts`.
 - **Zone offsets are cached** per zone and hour in `availability.ts` (exact: hours containing a transition fall back to a direct lookup).
+- **Accessibility.** Grids are one tab stop: arrows move, Enter or Space paints or selects, Shift with an arrow paints while moving. Every cell has a label with its time and mark (or "3 of 5 free, 1 maybe"). Heatmap shades run from 30% to 80% of `--heat` over the cell, so the faintest is about 1.5:1 against an empty cell and "everyone free" (`--heat-full`) at least 2.2:1 against the next shade; neighbouring counts in a big group cannot all differ visibly, so the labels and the slot detail carry the exact numbers.
 - **Privacy.** Every member sees every other member's free/maybe pattern. "Busy" never carries a reason. State this in the UI when joining.
 - **Whole-group writes** are gone: `updateGroup` sends only the slot size, `updateMember` sends only changed fields and override quanta.
-- **Sessions** are random 256-bit tokens in an httpOnly cookie; only the hash is stored. They never expire and there is no device list or "sign out other devices" yet (1.0). There is no rate limiting on join (1.0), so an invite token is only as safe as its length (192 bits) and expiry.
-- **Create group is open** to anyone who can reach the server. Put the instance behind a proxy or network rule if that matters; an owner-set "allow new groups" switch is not built.
+- **Sessions** are random 256-bit tokens in an httpOnly cookie; only the hash is stored. Their last use is recorded at most daily, which also renews the cookie.
+- **Rate limits are in memory** and keyed on the last `X-Forwarded-For` entry, which is trustworthy behind exactly one reverse proxy (the documented setup).
+- **Recovery emails are not verified** when set; a link goes to whoever reads that mailbox. Setting someone else's address only lets them into your own account.
+- **Create group is open** to anyone who can reach the server (rate-limited). The deployment guide shows how to close it in the proxy; an "allow new groups" switch is not built.
 - **Demo mode** (`CAFECITO_DEMO=1`) seeds sessions with public tokens. Development only.
 - **Next.js version.** `AGENTS.md` warns this Next.js differs from common knowledge; read `node_modules/next/dist/docs/` before touching routing, caching or the standalone build.

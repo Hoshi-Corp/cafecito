@@ -117,7 +117,7 @@ describe("group tab", () => {
     expect(screen.getByText("13").className).toContain("text-accent");
     expect(screen.getByText("14").className).not.toContain("text-accent");
     expect(rowCount()).toBe(17);
-    expect(label(0, ROW_18)).toMatch(/: 3 of 4 free$/);
+    expect(label(0, ROW_18)).toMatch(/: 3 of 4 free, 1 maybe$/);
     expect(label(0, ROW_7)).toMatch(/: 0 of 4 free$/);
     expect(screen.getByText("4 free")).toBeTruthy();
   });

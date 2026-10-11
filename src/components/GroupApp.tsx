@@ -23,6 +23,7 @@ import {
 } from "@/lib/availability";
 import { retryLoad, updateGroup, updateMember, useGroup, useLoadFailed, useRecentChange, useSignedOut } from "@/lib/store";
 import { SLOT_OPTIONS, type Group, type Mark, type Member, type OverrideMark } from "@/lib/types";
+import { Account } from "./Account";
 import { Landing } from "./Entry";
 import { Manage } from "./Manage";
 import { WeekGrid, type CellRange, type GridColumn, type GridRow } from "./WeekGrid";
@@ -49,6 +50,10 @@ const MARK_STYLE: Record<OverrideMark, CSSProperties> = {
 };
 
 const MARK_NAME: Record<Mark, string> = { f: "free", m: "maybe" };
+
+// Heatmap shade for a share of people free (0 to 1, maybes counting half). The range keeps the faintest shade
+// visible against an empty cell (about 1.5:1); "everyone free" uses --heat-full instead.
+const heat = (score: number) => `color-mix(in oklab, var(--heat) ${Math.round(30 + 50 * score)}%, var(--cell))`;
 
 const at = (q: number, zone: string) => DateTime.fromMillis(q * QUANTUM_MS, { zone });
 const time = (q: number, zone: string) => at(q, zone).toLocaleString(DateTime.TIME_SIMPLE);
@@ -301,6 +306,7 @@ function GroupView({ group }: { group: Group }) {
       {tab === "group" && (
         <>
           <WeekGrid
+            label="Group availability"
             columns={dateColumns}
             rows={rows}
             rowHeight={ROW_HEIGHT[group.slotMinutes]}
@@ -308,7 +314,11 @@ function GroupView({ group }: { group: Group }) {
             onSelect={(col, row) => setSelectedQ(week.days[col].startQ[row])}
             cellLabel={(col, row) => {
               const s = summaries[col][row];
-              return `${day(week.days[col].startQ[row], zone)} ${time(week.days[col].startQ[row], zone)}: ${s.free.length} of ${active.length} free`;
+              const who =
+                active.length && s.free.length === active.length
+                  ? "everyone free"
+                  : `${s.free.length} of ${active.length} free${s.maybe.length ? `, ${s.maybe.length} maybe` : ""}`;
+              return `${day(week.days[col].startQ[row], zone)} ${time(week.days[col].startQ[row], zone)}: ${who}`;
             }}
             cellStyle={(col, row) => {
               const s = summaries[col][row];
@@ -317,9 +327,7 @@ function GroupView({ group }: { group: Group }) {
               if (s.free.length === total) return { background: "var(--heat-full)" };
               const score = (s.free.length + s.maybe.length / 2) / total;
               if (score === 0) return undefined;
-              return {
-                background: `color-mix(in oklab, var(--heat) ${Math.round(12 + 60 * score)}%, var(--cell))`,
-              };
+              return { background: heat(score) };
             }}
           />
           {active.length > 0 && <Legend total={active.length} />}
@@ -336,6 +344,7 @@ function GroupView({ group }: { group: Group }) {
 
       {tab === "mine" && (
         <WeekGrid
+          label="My availability by date"
           columns={dateColumns}
           rows={rows}
           rowHeight={ROW_HEIGHT[group.slotMinutes]}
@@ -360,6 +369,7 @@ function GroupView({ group }: { group: Group }) {
 
       {tab === "typical" && (
         <WeekGrid
+          label="My typical week"
           columns={WEEKDAYS.map((label) => ({ key: label, label }))}
           rows={rows}
           rowHeight={ROW_HEIGHT[group.slotMinutes]}
@@ -424,7 +434,7 @@ function BestWindows({
                     {time(w.startQ, zone)}–{time(w.endQ, zone)}
                   </span>
                 </span>
-                <span className={w.free.length === total ? "font-medium text-free" : "text-muted"}>
+                <span className={w.free.length === total ? "font-medium text-heat-full" : "text-muted"}>
                   {w.free.length === total ? "Everyone" : `${w.free.length} of ${total}`}
                   {w.maybe.length > 0 && ` · ${w.maybe.map(nameOf).join(", ")} maybe`}
                 </span>
@@ -451,7 +461,7 @@ function Legend({ total }: { total: number }) {
                 ? "var(--heat-full)"
                 : n === 0
                   ? "var(--cell)"
-                  : `color-mix(in oklab, var(--heat) ${Math.round(12 + (60 * n) / total)}%, var(--cell))`,
+                  : heat(n / total),
           }}
         />
       ))}
@@ -598,6 +608,7 @@ function Settings({
           Show all 24 hours
         </label>
       </div>
+      <Account group={group} />
       {me.id === group.ownerId && <Manage group={group} />}
     </details>
   );
