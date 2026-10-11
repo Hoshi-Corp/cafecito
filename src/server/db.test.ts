@@ -3,20 +3,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { openDb } from "./db";
-import { loadGroup, updateMe } from "./groups";
+import { createGroup, loadGroup, updateMe } from "./groups";
 
-it("creates the database file's folder and keeps data across reopen without reseeding", () => {
+it("creates the database file's folder and keeps data across reopen", () => {
   const dir = mkdtempSync(join(tmpdir(), "cafecito-"));
   try {
     const file = join(dir, "nested", "cafecito.db");
     const first = openDb(file);
-    updateMe(first, "you", { name: "Kept" });
+    const { groupId, memberId } = createGroup(first, { groupName: "G", name: "Zed" });
+    updateMe(first, memberId, { name: "Kept" });
     first.close();
 
     const second = openDb(file);
-    expect(loadGroup(second, "demo", "you").members[0].name).toBe("Kept");
+    expect(loadGroup(second, groupId, memberId).members[0].name).toBe("Kept");
     expect(second.prepare(`SELECT count(*) n FROM "group"`).get()).toEqual({ n: 1 });
-    expect(second.pragma("user_version", { simple: true })).toBe(1);
+    expect(second.pragma("user_version", { simple: true })).toBe(2);
     second.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

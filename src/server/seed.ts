@@ -1,5 +1,6 @@
 import type { Db } from "./db";
 import { EMPTY_PATTERN, QUANTA_PER_DAY, paintPattern } from "../lib/availability";
+import { startSession } from "./groups";
 import type { Mark } from "../lib/types";
 
 type Range = [weekday: number, fromHour: number, toHour: number, mark?: Mark];
@@ -11,7 +12,8 @@ const pattern = (ranges: Range[]) =>
     EMPTY_PATTERN,
   );
 
-// Until invites land (0.4) there is no way to create a group, so a fresh database gets this one.
+// Demo group for development and screenshots (CAFECITO_DEMO=1). Each member gets a session whose token is
+// "demo-<id>", so setting the cookie `cafecito_session=demo-camille` signs a browser in as Camille.
 export function seed(db: Db) {
   db.prepare(`INSERT INTO "group" (id, name, slot_minutes) VALUES ('demo', 'Café crew', 30)`).run();
   const insert = db.prepare(
@@ -35,7 +37,7 @@ export function seed(db: Db) {
   ];
   db.transaction(() =>
     members.forEach(([id, name, color, zone, role, ranges], i) =>
-      insert.run(id, name, color, zone, role, pattern(ranges), i),
+      (insert.run(id, name, color, zone, role, pattern(ranges), i), startSession(db, id, `demo-${id}`)),
     ),
   )();
 }

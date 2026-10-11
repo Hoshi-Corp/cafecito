@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_PATTERN, QUANTA_PER_DAY, paintPattern, shiftPattern } from "@/lib/availability";
-import { signInAs } from "@/lib/store";
+import { retryLoad } from "@/lib/store";
 import type { Group, Mark, Member } from "@/lib/types";
 import { GroupApp } from "./GroupApp";
 
@@ -47,16 +47,14 @@ let writes: { path: string; body: Record<string, unknown> }[] = [];
 
 /** Serves `group` to the store, records its writes, and renders the app once the group has loaded. */
 async function open(group: Group = crew) {
-  let served = group;
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (init?.method) {
       const body = JSON.parse(init.body as string);
-      writes.push({ path: url.replace("/api/groups/demo", ""), body });
-      if (url.endsWith("/session")) served = { ...served, meId: body.memberId };
+      writes.push({ path: url.replace("/api/groups/me", ""), body });
     }
-    return { ok: true, json: async () => served };
+    return { ok: true, json: async () => group };
   });
-  await signInAs(group.meId);
+  await retryLoad();
   writes = [];
   const { container } = render(<GroupApp />);
   const cell = (col: number, row: number) =>
@@ -298,11 +296,16 @@ describe("settings", () => {
     expect(await sent(1)).toEqual([{ path: "", body: { slotMinutes: 30 } }]);
   });
 
-  it("acts as another member, who cannot change the slot size", async () => {
-    await open();
-    fireEvent.change(screen.getByLabelText(/^Act as/), { target: { value: "b" } });
-    expect(await sent(1)).toEqual([{ path: "/session", body: { memberId: "b" } }]);
-    await vi.waitFor(() => expect((screen.getByRole("button", { name: "15 min" }) as HTMLButtonElement).disabled).toBe(true));
+  it("shows a member who is not the owner their own name and no slot-size control", async () => {
+    await open({ ...crew, meId: "b" });
+    expect((screen.getByRole("button", { name: "15 min" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("Your name") as HTMLInputElement).value).toBe("Ben");
+    expect(screen.queryByText(/Create invite link/)).toBeNull();
+  });
+
+  it("lets the owner make an invite link, shown once", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Create invite link" }));
+    expect(await sent(1)).toEqual([{ path: "/invites", body: { days: 7, maxUses: null } }]);
   });
 });

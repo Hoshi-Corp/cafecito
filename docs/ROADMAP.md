@@ -1,50 +1,49 @@
 # Cafecito: roadmap
 
-Status as of 2026-10-11. Dates are intentionally absent: each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
+Status as of 2026-10-11. Release dates appear only once a release has shipped (see the table in the [README](../README.md)); each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
 
 ## Released
 
+| Release | Date |
+|---|---|
+| 0.1 Demo calendar | 2026-10-11 |
+| 0.2 Fix the model | 2026-10-11 |
+| 0.3 Shared storage | 2026-10-11 |
+
 **0.1 Demo calendar.** Mobile-first Next.js app on browser-local demo data. Typical week, date overrides, group heatmap, who-is-free list, best times, per-person time zones, 15/30/60-minute slots.
 
-## Next
+**0.2 Fix the model.** Shipped the "not set up" state: members with nothing marked are excluded from "everyone free" and listed as not counted. Overrides as ranges did not ship; it moved to 1.0. The group cap (12) shipped in 0.4, where groups first grow.
 
-### 0.2 Fix the model (no new features)
-Make the data model safe to share before sharing it.
-- ~~"Not set up" state~~ done early: members with nothing marked are excluded from "everyone free" and listed as not counted. The server model decides whether to store it.
-- Store overrides as ranges; drop overrides in the past.
-- Cap group size (12) and fail clearly, instead of the 31-member bit-mask limit.
-- Tests for each, in `availability.test.ts`.
+**0.3 Shared storage.** SQLite through `better-sqlite3`, migrations in the repo, a per-member write API that rejects writes to other members' rows, a server-backed `store.ts`, the `/data` volume and backup instructions. Verified: `docker build` and `docker run` on a fresh volume, one backup and restore. The two-browser check was done in 0.4 (see below).
 
-Exit: all tests pass; remaining items above are done.
+## Built, awaiting release
 
-### 0.3 Shared storage (built, exit checks pending)
-- SQLite via `better-sqlite3`; schema and migrations in the repo.
-- Per-member write API (see architecture); the server rejects writes to other members' rows.
-- A server-backed `store.ts` exporting `useGroup`, `updateGroup` and `updateMember`; remove the Reset button and `resetDemo`/`parseGroup`.
-- Add the `/data` volume for the SQLite file to `docker-compose.yml` (the Dockerfile, compose file and release workflow already exist), plus backup instructions.
-
-Built: all four items. Identity is a placeholder cookie that picks a member (no accounts until 0.4). Verified: `docker build` and `docker run` with a fresh volume, API reads and writes in the container, one backup and restore. Still to do for the exit: the two-browser check in the UI. 0.2's range overrides and group cap are not done; overrides are stored one row per quantum.
-
-Exit: two browsers on two accounts see each other's changes after reload; `docker run` works from a clean machine; restore-from-backup tested once.
+Both are on `main` and ship with the next manual release.
 
 ### 0.4 Groups and invites
-- Create a group; owner generates, lists and revokes invite links (expiring, optional use limit).
-- Join by link: choose a name, color and time zone; session cookie.
-- Owner can remove a member and change the slot size.
-- Join screen states what other members can see.
+- ✅ Create a group; the owner generates, lists and revokes invite links (expiring, optional use limit). Tokens are stored hashed and shown once.
+- ✅ Join by link: choose a name, color and time zone; session cookie.
+- ✅ Owner can remove a member (their data and sessions go with them) and change the slot size.
+- ✅ Join screen states what other members can see.
+- ✅ Group size capped at 12 (from 0.2).
+- The 0.3 "Act as" switch and shared demo group are gone; demo data is opt-in (`CAFECITO_DEMO=1`).
 
-Exit: a new person can go from invite link to filled-in week in under two minutes on a phone.
+Exit: a new person can go from invite link to filled-in week in under two minutes on a phone. **Not timed yet**; the flow works end to end in a real browser (create, invite, join, remove).
 
 ### 0.5 Live updates
-- SSE stream per group; clients apply the changed member without a reload.
-- Optimistic painting with rollback on a failed write.
-- "Updated by Camille" hint on recent changes.
+- ✅ One SSE stream per group; a profile change is sent as the member, an override change as just the marks that changed; both apply without a reload. Settings changes, joins and removals trigger a reload.
+- ✅ Optimistic painting with rollback: a refused write reloads the group.
+- ✅ "Updated by Camille" hint for a few seconds after someone else's change.
+- ✅ A dropped connection reconnects (EventSource) and resyncs with a reload; a removed member's stream is closed and they are signed out.
 
-Exit: a change made on one device appears on another within about a second; a dropped connection reconnects and resyncs.
+Exit: a change made on one device appears on another within about a second. Measured about 30 ms between two browser sessions on one machine; **not measured across a real network or reverse proxy**.
+
+## Next
 
 ### 1.0 Self-hosted release
 - Optional email magic-link recovery when SMTP is configured; the app works fully without it.
 - Rate limiting on join and sign-in; session list with "sign out other devices".
+- Carried over from 0.2: store overrides as ranges and drop past ones (today one row per quantum, never pruned).
 - Export my data; delete my account and data.
 - Deployment guide, upgrade notes, backup and restore runbook.
 - Accessibility pass (keyboard painting, screen-reader labels for slots, contrast of heatmap shades).

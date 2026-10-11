@@ -18,7 +18,6 @@ export function openDb(file: string): Db {
       db.pragma(`user_version = ${applied + i + 1}`);
     })();
   });
-  if (!db.prepare(`SELECT 1 FROM "group" LIMIT 1`).get()) seed(db);
   return db;
 }
 
@@ -26,5 +25,11 @@ export function openDb(file: string): Db {
 const globalForDb = globalThis as unknown as { cafecitoDb?: Db };
 
 export function getDb(): Db {
-  return (globalForDb.cafecitoDb ??= openDb(process.env.CAFECITO_DB ?? "data/cafecito.db"));
+  if (!globalForDb.cafecitoDb) {
+    const db = openDb(process.env.CAFECITO_DB ?? "data/cafecito.db");
+    // Demo data is opt-in: it comes with sessions anyone can use (see seed.ts).
+    if (process.env.CAFECITO_DEMO === "1" && !db.prepare(`SELECT 1 FROM "group" LIMIT 1`).get()) seed(db);
+    globalForDb.cafecitoDb = db;
+  }
+  return globalForDb.cafecitoDb;
 }

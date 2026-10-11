@@ -21,8 +21,10 @@ import {
   type MeetWindow,
   type WeekLayout,
 } from "@/lib/availability";
-import { retryLoad, signInAs, updateGroup, updateMember, useGroup, useLoadFailed } from "@/lib/store";
+import { retryLoad, updateGroup, updateMember, useGroup, useLoadFailed, useRecentChange, useSignedOut } from "@/lib/store";
 import { SLOT_OPTIONS, type Group, type Mark, type Member, type OverrideMark } from "@/lib/types";
+import { Landing } from "./Entry";
+import { Manage } from "./Manage";
 import { WeekGrid, type CellRange, type GridColumn, type GridRow } from "./WeekGrid";
 
 type Tab = "group" | "mine" | "typical";
@@ -71,6 +73,8 @@ const quantumNow = (prev?: number) => {
 export function GroupApp() {
   const group = useGroup();
   const failed = useLoadFailed();
+  const signedOut = useSignedOut();
+  if (signedOut) return <Landing />;
   // The group is fetched from the server in the browser, so there is nothing to render before that.
   if (!group)
     return (
@@ -109,6 +113,7 @@ function GroupView({ group }: { group: Group }) {
   const [brush, setBrush] = useState<Brush>("f");
   const [scrollTouches, setScrollTouches] = useState(false);
   const [selectedQ, setSelectedQ] = useState<number | null>(null);
+  const recent = useRecentChange();
 
   const me = group.members.find((m) => m.id === group.meId) ?? group.members[0];
   const zone = me.timeZone;
@@ -199,6 +204,11 @@ function GroupView({ group }: { group: Group }) {
         <h1 className="text-2xl font-semibold tracking-tight">{group.name}</h1>
         <span className="text-xs text-muted">Times in {city(zone)}</span>
       </header>
+      {recent && (
+        <p role="status" className="-mt-2 text-xs text-muted">
+          Updated by {recent}
+        </p>
+      )}
 
       <ul className="flex flex-wrap gap-1.5">
         {group.members.map((m) => (
@@ -588,19 +598,7 @@ function Settings({
           Show all 24 hours
         </label>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs text-muted">
-        <span>Shared with everyone using this server. No sign-in yet, so anyone can act as anyone.</span>
-        <label className="flex items-center gap-1.5">
-          Act as
-          <select className={field} value={me.id} onChange={(e) => signInAs(e.target.value)}>
-            {group.members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {nameOf(m)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {me.id === group.ownerId && <Manage group={group} />}
     </details>
   );
 }

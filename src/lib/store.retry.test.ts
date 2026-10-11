@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { signInAs, updateGroup } from "./store";
+import { retryLoad, updateGroup } from "./store";
 
 // Own file: the store keeps its state per module, and this test needs it empty.
 afterEach(() => {
@@ -19,7 +19,7 @@ it("retries a failed first load until the group arrives", async () => {
   });
   vi.spyOn(console, "error").mockImplementation(() => {});
 
-  await signInAs("a");
+  await retryLoad();
   updateGroup({ slotMinutes: 60 });
   expect(gets).toBe(1);
   expect(patches).toEqual([]); // nothing loaded yet, so there is no group to change
@@ -34,14 +34,14 @@ it("retries a failed first load until the group arrives", async () => {
 it("gives up after three failed loads and tries again only when asked", async () => {
   vi.useFakeTimers();
   vi.resetModules();
-  const { signInAs, retryLoad } = await import("./store");
+  const { retryLoad } = await import("./store");
   let gets = 0;
   vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
     init?.method ? { ok: true } : (gets++, { ok: false, status: 500 }),
   );
   vi.spyOn(console, "error").mockImplementation(() => {});
 
-  await signInAs("a");
+  await retryLoad();
   await vi.advanceTimersByTimeAsync(60_000);
   expect(gets).toBe(3);
 
