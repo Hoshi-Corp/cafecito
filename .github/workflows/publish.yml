@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  release:
+    name: Publish image & bump version
+    needs: test
+    # Bump 'none' skips the main-moved check below, so only main may publish :latest.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Work out the version to publish without touching the repo yet, so a
+      # failed image build leaves no bump commit, tag or release behind.
+      - name: Determine version
+        id: ver
+        env:
+          BUMP: ${{ github.event.inputs.version_bump }}
+        run: |
+          current="$(cat VERSION)"
+          new="$current"
+
+          if [ "$BUMP" != "none" ]; then
+            # Only publish what the test job verified: refuse if main moved
+            # since this run was dispatched (re-dispatch to pick it up).
+            git fetch origin main
+            if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+              echo "::error::main moved since dispatch (now $(git rev-parse --short origin/main), tested ${GITHUB_SHA::7}); re-run the release"
+              exit 1
+            fi
+
+            IFS='.' read -r major minor patch <<< "$current"
+            case "$BUMP" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+            esac
+            new="$major.$minor.$patch"
+          fi
+
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "version=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Set image name
+        id: image
+        run: echo "name=$(echo 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # With bump type 'none' no new version exists, so only refresh :latest
+      # and leave the existing :<version> tag untouched.
+      - name: Compute image tags
+        id: tags
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          BUMP: ${{ steps.ver.outputs.bump }}
+        run: |
+          {
+            echo "list<<EOF"
+            echo "$IMAGE:latest"
+            if [ "$BUMP" != "none" ]; then echo "$IMAGE:$VERSION"; fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image is already published, so record the release in git.
+      - name: Commit version bump and tag
+        if: steps.ver.outputs.bump != 'none'
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          echo "$VERSION" > VERSION
+          git add VERSION
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git tag "v$VERSION"
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+
+      - name: Create GitHub release
+        if: steps.ver.outputs.bump != 'none'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes
