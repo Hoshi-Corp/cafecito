@@ -69,6 +69,8 @@ Rank windows by preference as well as headcount: preferred days or times per mem
 
 ### 1.6 Multiple groups per person
 One account in several groups (climbing friends, old coworkers) with a group switcher, and a personal typical week that can be shared across groups or set per group.
+- **Create a new group while signed in.** Today "Create group" only appears to a browser with no session, so starting a second group means a private window and a separate identity. Add it to the group switcher: the creator becomes owner of the new group with the same account, and can carry over their typical week.
+- Joining by invite link while signed in adds the group to the same account instead of starting a new one.
 
 ### 2.0 Federation or hosted option (only if there is demand)
 A hosted instance for people who cannot self-host, with accounts that need email. Changes the privacy and operations story substantially; decide deliberately, not by drift.
