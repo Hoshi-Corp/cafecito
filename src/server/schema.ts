@@ -24,4 +24,20 @@ export const MIGRATIONS = [
     PRIMARY KEY (member_id, q)
   ) WITHOUT ROWID;
   `,
+  // 0.4: sessions and invite links. Only SHA-256 hashes of tokens are stored.
+  `
+  CREATE TABLE session (
+    token_hash TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE
+  ) WITHOUT ROWID;
+  CREATE TABLE invite (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    group_id TEXT NOT NULL REFERENCES "group"(id),
+    expires_at INTEGER NOT NULL,
+    max_uses INTEGER,
+    uses INTEGER NOT NULL DEFAULT 0,
+    revoked_at INTEGER
+  );
+  `,
 ];

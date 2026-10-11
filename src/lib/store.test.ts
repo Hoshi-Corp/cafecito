@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_PATTERN } from "./availability";
-import { signInAs, updateGroup, updateMember } from "./store";
+import { retryLoad, updateGroup, updateMember } from "./store";
 import type { Group } from "./types";
 
 const group: Group = {
@@ -19,7 +19,7 @@ async function setup() {
     if (init?.method === "PATCH") writes.push({ url, method: "PATCH", body: JSON.parse(init.body as string) });
     return { ok: true, json: async () => group };
   });
-  await signInAs("a");
+  await retryLoad();
   return writes;
 }
 
@@ -30,8 +30,8 @@ describe("store writes", () => {
     const writes = await setup();
     updateMember("a", (m) => ({ ...m, name: "Ana", overrides: { 2: "b", 3: "m" } }));
     await vi.waitFor(() => expect(writes).toHaveLength(2));
-    expect(writes[0]).toMatchObject({ url: "/api/groups/demo/me", body: { name: "Ana" } });
-    expect(writes[1]).toMatchObject({ url: "/api/groups/demo/me/overrides", body: { set: { 3: "m" }, remove: [1] } });
+    expect(writes[0]).toMatchObject({ url: "/api/groups/me/me", body: { name: "Ana" } });
+    expect(writes[1]).toMatchObject({ url: "/api/groups/me/me/overrides", body: { set: { 3: "m" }, remove: [1] } });
   });
 
   it("sends nothing for another member or an unchanged member", async () => {
@@ -46,7 +46,7 @@ describe("store writes", () => {
     const writes = await setup();
     updateGroup({ slotMinutes: 60 });
     await vi.waitFor(() => expect(writes).toHaveLength(1));
-    expect(writes[0]).toMatchObject({ url: "/api/groups/demo", body: { slotMinutes: 60 } });
+    expect(writes[0]).toMatchObject({ url: "/api/groups/me", body: { slotMinutes: 60 } });
   });
 
   it("reloads the group from the server when a write is refused", async () => {

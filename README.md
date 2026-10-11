@@ -16,9 +16,40 @@ npm run dev
 
 Open http://localhost:4174. `npm test` runs the tests; `npm test -- --coverage` also enforces the 85% coverage threshold CI requires.
 
+## Screenshots
+
+| Group heatmap and best times | Typical week |
+|---|---|
+| ![Group view: best times and the heatmap](docs/screenshots/group.png) | ![Painting a typical week](docs/screenshots/typical-week.png) |
+
+| Create a group | Invite link and members (owner) | Join screen |
+|---|---|---|
+| ![Create a group](docs/screenshots/create-group.png) | ![Invite links and members](docs/screenshots/invites.png) | ![Joining through an invite link](docs/screenshots/join.png) |
+
+The screenshots come from the demo data (`CAFECITO_DEMO=1`, below).
+
+## Release calendar
+
+| Release | What | Date |
+|---|---|---|
+| 0.1 | Demo calendar on browser-local data | 2026-10-11 |
+| 0.2 | Safer data model: "not set up" state | 2026-10-11 |
+| 0.3 | Shared SQLite storage and per-member write API | 2026-10-11 |
+| 0.4 | Groups, invite links, real sessions | Built, not released yet |
+| 0.5 | Live updates over Server-Sent Events | Built, not released yet |
+| 1.0 | Self-hosted release: recovery, rate limits, export, accessibility | Not scheduled |
+
+Dates are release dates, taken from the git tags. A release ships when its exit criteria in the [roadmap](docs/ROADMAP.md) are met, so unreleased rows have no date.
+
 ## Status
 
-Release 0.3: one shared demo group stored in SQLite (`data/cafecito.db`, or `CAFECITO_DB`), written per member through an API. There are no accounts yet: the server signs each browser in as a member through a cookie, and Settings → *Act as* switches member, so anyone can act as anyone. Invite links and real sessions come in 0.4.
+Releases 0.4 and 0.5 are built on `main`. Opening the app with no session shows **Create group**: the creator becomes the owner and is signed in with a session cookie. The owner makes invite links in Settings (expiring, optional use limit, revocable) and removes people. A link opens a join screen that says what the group can see (name, time zone, free and maybe time, never a reason for busy); a group holds up to 12 people. Changes show up on everyone's screen within about a second (measured locally; a proxy that buffers the stream slows it), with an "Updated by …" note, and the browser resyncs after a dropped connection. Painting is applied at once and rolled back (the group is reloaded) if the server refuses the write.
+
+**Upgrading from 0.3:** the shared demo group had no owner session, so it cannot be reached any more. Start from a new database (remove the `cafecito-data` volume, or point `CAFECITO_DB` at a new file) and create a group.
+
+**Behind a reverse proxy**, do not buffer `/api/groups/*/events` (nginx: `proxy_buffering off`; the app already sends `X-Accel-Buffering: no`), or live updates arrive late.
+
+**Demo data:** `CAFECITO_DEMO=1 npm run dev` on an empty database seeds the "Café crew" group. Set the cookie `cafecito_session=demo-you` (or `demo-camille`, `demo-diego`, `demo-sofia`, `demo-kenji`) to sign in as that member. Never set this on a server other people can reach: the tokens are public.
 
 ## How availability works
 

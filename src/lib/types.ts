@@ -31,3 +31,20 @@ export interface Group {
   /** The only member who may change group settings. */
   ownerId: string;
 }
+
+export interface OverrideChange {
+  set: Record<number, OverrideMark>;
+  remove: number[];
+}
+
+/** Sent to a group's browsers when someone changes something. */
+export interface GroupEvent {
+  /** Member who made the change. */
+  by: string;
+  /** Their new state, when only their availability or profile changed. */
+  member?: Member;
+  /** Only the override marks that changed, so a paint stroke does not resend a member's whole history. */
+  overrides?: OverrideChange;
+  /** Anything bigger (settings, people joining or leaving): load the group again. */
+  reload?: true;
+}
