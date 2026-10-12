@@ -6,9 +6,9 @@ import { MINUTE, clientIp, limit } from "@/server/limit";
 export async function POST(req: Request) {
   try {
     limit(`create:${clientIp(req)}`, 5, 60 * MINUTE);
-    const { token } = createGroup(getDb(), await json(req), device(req));
+    const { token, accessToken } = createGroup(getDb(), await json(req), device(req));
     await setSessionCookie(token);
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, accessToken });
   } catch (e) {
     return failure(e);
   }

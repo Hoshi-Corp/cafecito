@@ -20,10 +20,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/invites/[token]
   try {
     limitInvites(req);
     const body = await json(req);
-    const { groupId, memberId, token } = joinGroup(getDb(), (await ctx.params).token, body, Date.now(), device(req));
+    const { groupId, memberId, token, accessToken } = joinGroup(getDb(), (await ctx.params).token, body, Date.now(), device(req));
     await setSessionCookie(token);
     publish(groupId, { by: memberId, reload: true });
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, accessToken });
   } catch (e) {
     return failure(e);
   }

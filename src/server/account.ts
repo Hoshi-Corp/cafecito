@@ -92,8 +92,10 @@ export function createSignInLinks(db: Db, email: string, now = Date.now()) {
   });
 }
 
-/** Spends a sign-in link (once, before it expires) on a new session for this device. */
+/** Signs this device in with a personal link (reusable until replaced), or spends an emailed one (once, before it expires). */
 export function spendSignInLink(db: Db, token: string, device = "", now = Date.now()) {
+  const personal = db.prepare(`SELECT id FROM member WHERE access_hash = ?`).get(hash(token)) as { id: string } | undefined;
+  if (personal) return startSession(db, personal.id, device);
   const link = db
     .prepare(`DELETE FROM sign_in_link WHERE token_hash = ? RETURNING member_id memberId, expires_at expiresAt`)
     .get(hash(token)) as { memberId: string; expiresAt: number } | undefined;

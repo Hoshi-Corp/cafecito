@@ -267,6 +267,14 @@ describe("settings", () => {
     expect(await sent(1)).toEqual([{ path: "/me", body: { name: "Anna" } }]);
   });
 
+  it("changes the member's color", async () => {
+    await open();
+    expect(screen.getByRole("button", { name: "Teal", pressed: false })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Teal" }));
+    expect(screen.getByRole("button", { name: "Teal" }).getAttribute("aria-pressed")).toBe("true");
+    expect(await sent(1)).toEqual([{ path: "/me", body: { color: "#0f766e" } }]);
+  });
+
   it("changes time zone keeping wall-clock times by default, or the same moments when asked", async () => {
     await open();
     const zone = screen.getByLabelText("Your time zone") as HTMLSelectElement;

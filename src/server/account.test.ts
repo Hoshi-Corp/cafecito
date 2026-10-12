@@ -10,13 +10,16 @@ import { subscribe } from "./events";
 import {
   DAY_MS,
   HttpError,
+  MAX_SESSIONS,
   SESSION_IDLE_MS,
   createInvite,
   hash,
   joinGroup,
   loadGroup,
+  newAccessToken,
   patchOverrides,
   prune,
+  reissueAccessToken,
   resolveSession,
   startSession,
   updateMe,
@@ -79,7 +82,7 @@ describe("overrides stored as ranges", () => {
       old.close();
 
       const db = openDb(file);
-      expect(db.pragma("user_version", { simple: true })).toBe(3);
+      expect(db.pragma("user_version", { simple: true })).toBe(4);
       expect(ranges(db, "a")).toEqual([
         { s: 1, e: 3, mark: "f" },
         { s: 3, e: 4, mark: "m" },
@@ -117,6 +120,21 @@ describe("sessions and devices", () => {
     expect(resolveSession(db, token, t0 + 2 * DAY_MS).refreshed).toBe(true);
     expect(resolveSession(db, token, t0 + 2 * DAY_MS + 1000).refreshed).toBe(false);
     expect(status(() => resolveSession(db, token, t0 + 2 * DAY_MS + SESSION_IDLE_MS + 1))).toBe(401);
+  });
+
+  it("keeps only the most recently used sessions, never the one just made", () => {
+    const db = fresh();
+    const t0 = Date.UTC(2026, 0, 1);
+    const phone = startSession(db, "diego", "Phone", undefined, t0);
+    const unused = startSession(db, "diego", "Tablet", undefined, t0 + 1000);
+    resolveSession(db, phone, t0 + 2 * DAY_MS); // the phone is used a day later, so its last use is recent
+    // With the demo session, the phone and the tablet, this is one over the limit.
+    const tokens = Array.from({ length: MAX_SESSIONS - 2 }, (_, i) => startSession(db, "diego", "Private window", undefined, t0 + 3 * DAY_MS + i));
+    expect(status(() => resolveSession(db, unused, t0 + 3 * DAY_MS))).toBe(401); // never used again: first to go
+    expect(resolveSession(db, phone, t0 + 3 * DAY_MS).memberId).toBe("diego"); // older than the others, but used more recently than the tablet
+    expect(db.prepare(`SELECT count(*) n FROM session WHERE member_id = 'diego'`).get()).toEqual({ n: MAX_SESSIONS });
+    expect(resolveSession(db, tokens.at(-1), t0 + 3 * DAY_MS).memberId).toBe("diego");
+    expect(resolveSession(db, "demo-camille").memberId).toBe("camille"); // nobody else's
   });
 
   it("lists my devices and signs out the others, closing only their streams", () => {
@@ -203,6 +221,30 @@ describe("email sign-in links", () => {
     expect(resolveSession(db, session).memberId).toBe(fresher[0].name === "You" ? "you" : other.memberId);
     expect(status(() => spendSignInLink(db, fresher[0].token))).toBe(404); // single use
     expect(status(() => spendSignInLink(db, "forged"))).toBe(404);
+  });
+});
+
+describe("personal links", () => {
+  it("is given on joining, signs in any device again and again, and is replaced by a new one", () => {
+    const db = fresh();
+    const { token: invite } = createInvite(db, "demo", "you", {});
+    const { memberId, accessToken } = joinGroup(db, invite, { name: "Ana" });
+    expect(db.prepare(`SELECT access_hash FROM member WHERE id = ?`).get(memberId)).toEqual({ access_hash: hash(accessToken) });
+    for (const device of ["Phone", "Laptop"]) expect(resolveSession(db, spendSignInLink(db, accessToken, device)).memberId).toBe(memberId);
+    const next = newAccessToken(db, memberId);
+    expect(status(() => spendSignInLink(db, accessToken))).toBe(404);
+    expect(resolveSession(db, spendSignInLink(db, next)).memberId).toBe(memberId);
+    expect(status(() => spendSignInLink(db, "forged"))).toBe(404);
+  });
+
+  it("lets only the owner replace a member's link, and only within the group", () => {
+    const db = fresh();
+    const old = newAccessToken(db, "camille");
+    expect(status(() => reissueAccessToken(db, "demo", "diego", "camille"))).toBe(403);
+    expect(status(() => reissueAccessToken(db, "demo", "you", "nobody"))).toBe(404);
+    const next = reissueAccessToken(db, "demo", "you", "camille");
+    expect(status(() => spendSignInLink(db, old))).toBe(404);
+    expect(resolveSession(db, spendSignInLink(db, next)).memberId).toBe("camille");
   });
 });
 

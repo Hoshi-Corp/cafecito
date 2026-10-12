@@ -91,6 +91,24 @@ export function resolveSession(db: Db, token: string | undefined, now = Date.now
   return { memberId: row.memberId, groupId: row.groupId, tokenHash, refreshed };
 }
 
+/** Gives the member a new personal sign-in link token; any earlier one stops working. Returned once, only its hash is kept. */
+export function newAccessToken(db: Db, memberId: string) {
+  const token = randomBytes(24).toString("base64url");
+  db.prepare(`UPDATE member SET access_hash = ? WHERE id = ?`).run(hash(token), memberId);
+  return token;
+}
+
+/** The owner replaces a member's personal link, for someone who lost theirs. */
+export function reissueAccessToken(db: Db, groupId: string, ownerId: string, targetId: string) {
+  assertOwner(db, ownerId);
+  if (!db.prepare(`SELECT 1 FROM member WHERE id = ? AND group_id = ?`).get(targetId, groupId))
+    throw new HttpError(404, "No such member");
+  return newAccessToken(db, targetId);
+}
+
+// Generous, because `last_seen` is only recorded daily: a day of heavy use must not push out a device used every day.
+export const MAX_SESSIONS = 50;
+
 /** Starts a session for a member and returns the token to set as the cookie. `device` labels it in the device list. */
 export function startSession(
   db: Db,
@@ -102,6 +120,11 @@ export function startSession(
   db.prepare(`INSERT INTO session (token_hash, member_id, device, created_at, last_seen) VALUES (?, ?, ?, ?, ?)`).run(
     hash(token), memberId, device.slice(0, 100), now, now,
   );
+  // A personal link opened over and over would otherwise pile up rows: keep the most recently used.
+  db.prepare(
+    `DELETE FROM session WHERE member_id = @m AND token_hash NOT IN
+       (SELECT token_hash FROM session WHERE member_id = @m ORDER BY token_hash = @t DESC, last_seen DESC LIMIT ${MAX_SESSIONS})`,
+  ).run({ m: memberId, t: hash(token) });
   return token;
 }
 
@@ -233,7 +256,7 @@ function addMember(db: Db, groupId: string, role: "owner" | "member", body: unkn
       `INSERT INTO member (id, group_id, name, color, time_zone, role, pattern, position) VALUES (?, ?, '', '#c2410c', 'UTC', ?, ?, ?)`,
     ).run(id, groupId, role, EMPTY_PATTERN, next);
     updateMe(db, id, { ...body, pattern: undefined });
-    return { memberId: id, token: startSession(db, id, device) };
+    return { memberId: id, token: startSession(db, id, device), accessToken: newAccessToken(db, id) };
   })();
 }
 
