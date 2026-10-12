@@ -37,13 +37,16 @@ it("shows who is in the group and what they will see before joining", async () =
   vi.stubGlobal("location", loc);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) =>
     init?.method === "POST"
-      ? { ok: true, json: async () => ({}) }
+      ? { ok: true, json: async () => ({ accessToken: "abc" }) }
       : { ok: true, json: async () => ({ groupName: "Climbers", members: ["Ana", " "] }) },
   );
   render(<JoinForm token="t" />);
   expect(await screen.findByRole("heading", { name: "Join Climbers" })).toBeTruthy();
   expect(screen.getByText(/Already in: Ana, Unnamed/).textContent).toMatch(/never shows a reason/);
   await submit("Ben");
+  expect(loc.href).toBe(""); // not before the person has seen their personal link
+  expect((screen.getByLabelText("Your personal link") as HTMLInputElement).value).toMatch(/\/sign-in#abc$/);
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
   expect(loc.href).toBe("/");
 });
 
@@ -78,4 +81,43 @@ it("signs in from an emailed link with a click, or says the link is spent", asyn
   ok = true;
   await act(async () => fireEvent.click(button));
   expect(loc.href).toBe("/");
+});
+
+it("warns before leaving the personal link screen, but not when continuing", async () => {
+  const loc = { href: "", origin: "https://cafe.test" };
+  vi.stubGlobal("location", loc);
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) =>
+    init?.method === "POST"
+      ? { ok: true, json: async () => ({ accessToken: "abc" }) }
+      : { ok: true, json: async () => ({ groupName: "Climbers", members: [] }) },
+  );
+  render(<JoinForm token="t" />);
+  await screen.findByRole("heading", { name: "Join Climbers" });
+  await submit("Ben");
+  const leave = () => {
+    const e = new Event("beforeunload", { cancelable: true });
+    dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+  expect(leave()).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(leave()).toBe(false);
+});
+
+it("signs in with the token after the #, or the one in the path", async () => {
+  const posts: unknown[] = [];
+  vi.stubGlobal("location", { hash: "#abc", href: "", pathname: "/sign-in" });
+  const replaced: unknown[][] = [];
+  vi.stubGlobal("history", { replaceState: (...args: unknown[]) => replaced.push(args) });
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    posts.push([url, JSON.parse(init!.body as string)]);
+    return { ok: true, json: async () => ({}) };
+  });
+  const { unmount } = render(<SignInLink />);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Sign in on this device" })));
+  unmount();
+  render(<SignInLink token="emailed" />);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Sign in on this device" })));
+  expect(replaced[0]).toEqual([null, "", "/sign-in"]); // the token leaves the address bar
+  expect(posts).toEqual([["/api/sign-in/link", { token: "abc" }], ["/api/sign-in/link", { token: "emailed" }]]);
 });

@@ -34,9 +34,9 @@ src/server/               SQLite (db, schema + migrations), validated own-rows-o
                           my account: devices, export, deletion, sign-in links (account.ts), in-memory pub/sub (events.ts),
                           request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), opt-in demo data (seed.ts)
 src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, invites, members, events),
-                          invites/[token] (info, join), sign-in (+ [token])
+                          invites/[token] (info, join), sign-in (+ link)
 src/app/join/[token]      join screen
-src/app/sign-in/[token]   where an emailed sign-in link lands
+src/app/sign-in, [token]  where a personal link (`/sign-in#token`) or an emailed one (`/sign-in/token`) lands
 src/components/GroupApp   screens: typical week, dates, group heatmap, best times
 src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
 src/components/Account    my account: recovery email, devices, export, delete
@@ -86,11 +86,13 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `GET`, `POST /api/groups/:id/invites` | List live invites, create one (owner); the token is returned once |
 | `DELETE /api/groups/:id/invites/:inviteId` | Revoke an invite (owner) |
 | `DELETE /api/groups/:id/members/:memberId` | Remove a member (owner) |
+| `POST /api/groups/:id/me/access-link` | Replace my personal sign-in link; the token is returned once |
+| `POST /api/groups/:id/members/:memberId/access-link` | Replace a member's personal link (owner); the token is returned once |
 | `GET /api/invites/:token` | What the join screen shows: group name, who is in it |
-| `POST /api/invites/:token` | Join a group, creates a session |
+| `POST /api/invites/:token` | Join a group, creates a session; the reply carries my personal link token |
 | `GET /api/sign-in` | Whether email sign-in is on |
 | `POST /api/sign-in` | Email a sign-in link to a recovery address |
-| `POST /api/sign-in/:token` | Spend a sign-in link, creates a session |
+| `POST /api/sign-in/link` | Sign in with a personal or emailed link (token in the body, not the URL); creates a session |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
 Writes are **per member and own-rows-only**. No call replaces the whole group.
@@ -101,7 +103,7 @@ A write that succeeds is published to the group's open streams (`events.ts`, in 
 
 ### Auth
 
-The invite link is the credential: opening it asks for a name and sets a session cookie. Sessions expire after 180 days unused; Settings lists a member's devices and signs out the others. Email sign-in links are optional and only recover access to an existing member, so self-hosting needs no mail server. All tokens (sessions, invites, sign-in links) are random and stored hashed. Joining, invite lookups, group creation and sign-in are rate-limited per client address (`limit.ts`). The review of these paths is in [SECURITY.md](SECURITY.md).
+The invite link is the credential: opening it asks for a name and sets a session cookie. Sessions expire after 180 days unused, and a member keeps at most 50 (the least recently used is dropped first); Settings lists a member's devices and signs out the others. Email sign-in links are optional and only recover access to an existing member, so self-hosting needs no mail server. All tokens (sessions, invites, sign-in links) are random and stored hashed. Joining, invite lookups, group creation and sign-in are rate-limited per client address (`limit.ts`). The review of these paths is in [SECURITY.md](SECURITY.md).
 
 ## Design decisions and known gaps
 

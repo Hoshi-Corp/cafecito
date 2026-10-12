@@ -24,7 +24,7 @@ import {
 import { retryLoad, updateGroup, updateMember, useGroup, useLoadFailed, useRecentChange, useSignedOut } from "@/lib/store";
 import { SLOT_OPTIONS, type Group, type Mark, type Member, type OverrideMark } from "@/lib/types";
 import { Account } from "./Account";
-import { Landing } from "./Entry";
+import { ColorPicker, Landing } from "./Entry";
 import { Manage } from "./Manage";
 import { WeekGrid, type CellRange, type GridColumn, type GridRow } from "./WeekGrid";
 
@@ -574,6 +574,9 @@ function Settings({
             ))}
           </select>
         </label>
+        <div className="sm:col-span-2">
+          <ColorPicker value={me.color} onChange={(color) => updateMember(me.id, (m) => ({ ...m, color }))} />
+        </div>
         <div className="flex items-center gap-1.5 text-xs text-muted sm:col-span-2">
           <input
             id="keep-moments"

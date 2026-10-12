@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { retryLoad } from "@/lib/store";
 import type { Group } from "@/lib/types";
-import { field } from "./Entry";
+import { AccessLink, field } from "./Entry";
 
 type Invite = { id: string; expiresAt: number; maxUses: number | null; uses: number };
 
@@ -21,6 +21,7 @@ export function Manage({ group }: { group: Group }) {
   const [maxUses, setMaxUses] = useState("");
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reissued, setReissued] = useState<{ name: string; token: string } | null>(null);
 
   const refresh = async () => {
     const res = await fetch("/api/groups/me/invites");
@@ -47,6 +48,13 @@ export function Manage({ group }: { group: Group }) {
     if (!confirm(`Remove ${name}? Their availability is deleted.`)) return;
     await call(`/members/${id}`, "DELETE");
     retryLoad();
+  };
+
+  const reissue = async (id: string, name: string) => {
+    if (!confirm(`Make a new personal link for ${name}? Their old link stops working, and you will see the new one.`)) return;
+    const res = await call(`/members/${id}/access-link`, "POST");
+    if (res.ok) setReissued({ name, token: (await res.json()).accessToken });
+    else setError("Could not make a new link.");
   };
 
   return (
@@ -100,12 +108,23 @@ export function Manage({ group }: { group: Group }) {
           .map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-2">
               {m.name.trim() || "Unnamed"}
-              <button className="text-xs underline" onClick={() => remove(m.id, m.name)}>
-                Remove
-              </button>
+              <span className="flex gap-3 text-xs">
+                <button className="underline" onClick={() => reissue(m.id, m.name.trim() || "them")}>
+                  New link
+                </button>
+                <button className="underline" onClick={() => remove(m.id, m.name)}>
+                  Remove
+                </button>
+              </span>
             </li>
           ))}
       </ul>
+      {reissued && (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted">Send this to {reissued.name} privately.</p>
+          <AccessLink token={reissued.token} />
+        </div>
+      )}
     </div>
   );
 }

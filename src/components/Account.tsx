@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { retryLoad } from "@/lib/store";
 import type { Group } from "@/lib/types";
-import { field } from "./Entry";
+import { AccessLink, field } from "./Entry";
 import { call } from "./Manage";
 
 type Session = { device: string; createdAt: number; lastSeen: number; current: boolean };
@@ -14,6 +14,7 @@ const ME = "/api/groups/me/me";
 export function Account({ group }: { group: Group }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [note, setNote] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const refresh = () =>
     fetch(`${ME}/sessions`)
@@ -27,6 +28,13 @@ export function Account({ group }: { group: Group }) {
     const res = await call("/me", "PATCH", { email: new FormData(e.currentTarget).get("email") });
     setNote(res.ok ? "Recovery email saved." : ((await res.json().catch(() => null))?.error ?? "Could not save it."));
     if (res.ok) retryLoad();
+  };
+
+  const newLink = async () => {
+    if (!confirm("Get a new personal link? The old one stops working, so save the new one.")) return;
+    const res = await call("/me/access-link", "POST");
+    if (res.ok) setAccessToken((await res.json()).accessToken);
+    else setNote("Could not make a new link.");
   };
 
   const signOutOthers = async () => {
@@ -50,6 +58,13 @@ export function Account({ group }: { group: Group }) {
   return (
     <div className="mt-4 flex flex-col gap-3 border-t border-line pt-3">
       <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">Your account</h3>
+      <div className="flex flex-col gap-1">
+        <h4 className="text-xs text-muted">Personal link: opens your account on any device</h4>
+        {accessToken && <AccessLink token={accessToken} />}
+        <button className="self-start text-xs underline" onClick={newLink}>
+          Get a new personal link
+        </button>
+      </div>
       {group.recovery && (
         <form onSubmit={saveEmail} className="flex flex-wrap items-end gap-2">
           <label className="flex grow flex-col gap-1 text-xs text-muted">

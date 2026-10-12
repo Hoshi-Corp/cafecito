@@ -82,7 +82,8 @@ Open `https://cafecito.example.org` in a browser. You should see **Create group*
 
 People are signed in by a cookie in their browser. If someone loses their phone or clears their browser, they can get back in two ways:
 
-- **Without email:** the group's owner removes them, sends a new invite link, and they mark their week again.
+- **With their personal link:** everyone gets one when they join (it is shown once; they should save it). Opening it on any device signs that device in.
+- **Lost the link, no email:** the owner presses *New link* beside their name in Settings and sends them the new one; the old link stops working. Nothing is lost.
 - **With email:** they set a *recovery email* in Settings beforehand. Then, from the start page of any browser, they ask for a sign-in link and receive it by email.
 
 To turn on email, fill in the two `SMTP_` lines in `compose.yaml` and remove the `#` in front of them:
@@ -205,4 +206,5 @@ If the server already runs nginx, Traefik or another proxy, drop the `caddy` ser
 - **The browser says the site is not secure, or does not load:** check that the DNS record points at the server (`ping cafecito.example.org`) and that ports 80 and 443 are open in the VPS provider's firewall. `docker compose logs caddy` shows certificate problems.
 - **"Too many attempts":** someone (or a script) tried invite links or sign-in links many times from one address. It clears within 15 to 60 minutes, and a restart clears it at once.
 - **Changes by others only appear after a reload:** a proxy is buffering the live stream; see [Using another reverse proxy](#using-another-reverse-proxy).
-- **Someone lost access and has no recovery email:** as the owner, remove them in Settings and send them a new invite link.
+- **Someone lost access and has no recovery email:** as the owner, press *New link* beside their name in Settings and send them the new link. (People who joined before 1.0.1 have no personal link yet; they can make one in Settings while signed in, or you can make one for them.)
+- **The owner lost every device:** nobody else can make a new link for the owner. Before that happens, owners should save their own personal link (Settings, *Get a new personal link*) or set a recovery email. Without either, the group can no longer invite or remove people.

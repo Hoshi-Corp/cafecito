@@ -69,4 +69,9 @@ export const MIGRATIONS = [
     expires_at INTEGER NOT NULL
   ) WITHOUT ROWID;
   `,
+  // 1.0.1: a personal link per member that signs in any device until it is replaced. Only its hash is stored.
+  `
+  ALTER TABLE member ADD COLUMN access_hash TEXT;
+  CREATE UNIQUE INDEX member_access_hash ON member(access_hash);
+  `,
 ];

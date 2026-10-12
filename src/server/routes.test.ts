@@ -23,9 +23,11 @@ const invite = await import("@/app/api/groups/[id]/invites/[inviteId]/route");
 const member = await import("@/app/api/groups/[id]/members/[memberId]/route");
 const events = await import("@/app/api/groups/[id]/events/route");
 const join = await import("@/app/api/invites/[token]/route");
+const accessLink = await import("@/app/api/groups/[id]/me/access-link/route");
+const memberLink = await import("@/app/api/groups/[id]/members/[memberId]/access-link/route");
 const sessions = await import("@/app/api/groups/[id]/me/sessions/route");
 const signIn = await import("@/app/api/sign-in/route");
-const signInLink = await import("@/app/api/sign-in/[token]/route");
+const signInLink = await import("@/app/api/sign-in/link/route");
 const { handle, SESSION_COOKIE } = await import("./http");
 const { subscribe } = await import("./events");
 const { getDb } = await import("./db");
@@ -115,6 +117,39 @@ describe("start a group and join it", () => {
     expect(g.members.find((m: { id: string }) => m.id === g.meId)).toMatchObject({ name: "Zed" });
     expect(g.ownerId).toBe("you");
     expect((await invites.GET(req(), ctx())).status).toBe(403);
+  });
+
+  it("gives a personal link at create and join that signs in a fresh browser, until it is replaced", async () => {
+    const spend = (token: unknown) => signInLink.POST(req({ token })); // works with email sign-in off
+    jar.clear();
+    const created = await (await groups.POST(req({ ...profile, groupName: "Climbers" }))).json();
+    expect(created.accessToken).toEqual(expect.any(String));
+    const invite = await (await invites.POST(req(), ctx())).json();
+    jar.clear();
+    const joined = await (await join.POST(req(profile), ctx({ token: invite.token }))).json();
+    expect(joined.accessToken).toEqual(expect.any(String));
+    const memberId = (await get()).meId;
+
+    jar.clear();
+    expect((await spend(joined.accessToken)).status).toBe(200);
+    expect((await get()).meId).toBe(memberId);
+
+    const next = (await (await accessLink.POST(req(), ctx())).json()).accessToken;
+    jar.clear();
+    expect((await spend(joined.accessToken)).status).toBe(404); // replaced
+    expect((await spend(next)).status).toBe(200);
+  });
+
+  it("lets only the owner replace another member's personal link", async () => {
+    const reissue = (memberId: string) => memberLink.POST(req(), ctx({ memberId }));
+    as("camille");
+    expect((await reissue("diego")).status).toBe(403);
+    as("you");
+    expect((await reissue("nobody")).status).toBe(404);
+    const { accessToken } = await (await reissue("camille")).json();
+    jar.clear();
+    expect((await signInLink.POST(req({ token: accessToken }))).status).toBe(200);
+    expect((await get()).meId).toBe("camille");
   });
 
   it("refuses a bad or revoked link", async () => {
@@ -258,11 +293,11 @@ describe("email sign-in", () => {
       const token = mail.text.match(/https:\/\/cafe\.test\/sign-in\/(\S+)/)![1];
 
       jar.clear();
-      const spend = (type = "application/json") =>
+      const spend = (type = "application/json", body: unknown = { token }) =>
         signInLink.POST(
-          new Request("http://x/", { method: "POST", body: "{}", headers: { "content-type": type, "x-forwarded-for": "10.1.0.9" } }),
-          ctx({ token }),
+          new Request("http://x/", { method: "POST", body: JSON.stringify(body), headers: { "content-type": type, "x-forwarded-for": "10.1.0.9" } }),
         );
+      expect((await spend("application/json", {})).status).toBe(400); // a link with its token cut off
       expect((await spend("application/x-www-form-urlencoded")).status).toBe(415); // no cross-site form sign-in
       expect((await spend()).status).toBe(200);
       expect(await get()).toMatchObject({ meId: "you" });

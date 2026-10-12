@@ -48,6 +48,14 @@ Exit: a change made on one device appears on another within about a second. Meas
 
 Exit: a non-developer friend can run it from the guide (**not done yet**: the guide is written for that reader and its commands were tested, but nobody outside the project has followed it); security review of auth and write paths done ([SECURITY.md](SECURITY.md); it found and fixed one login-CSRF gap).
 
+### 1.0.1 Personal links
+- ✅ Each member gets a personal link when they join (or create a group), shown once with a copy button (and a warning if you try to leave before saving it). The token sits after a `#` (`/sign-in#token`), so it never reaches a server log. Opening it on any device signs that device in, as often as needed, until it is replaced. Stored hashed, never shown again.
+- ✅ "Get a new personal link" in Settings replaces it; the owner can replace anyone's from Manage (*New link*), for people who lost theirs with no recovery email and no other device.
+- ✅ Color can be changed after joining (Settings).
+- Members who joined before 1.0.1 have no link until they make one in Settings or the owner does.
+
+Exit: lose every device, open the saved link on a new one, and be back in the group with the same name, color and week. **Not tried on a real second device yet.**
+
 ## Possible future releases
 
 Ordered by how directly they help the core question. None is committed.

@@ -46,3 +46,18 @@ it("shows the server's reason when an invite cannot be made", async () => {
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Create invite link" })));
   expect(screen.getByRole("alert").textContent).toBe("Invalid expiry");
 });
+
+it("lets the owner make a new link for a member and shows it to send on", async () => {
+  const calls: string[] = [];
+  vi.stubGlobal("location", { origin: "https://cafe.test" });
+  vi.stubGlobal("confirm", () => true);
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    return { ok: true, json: async () => (init?.method === "POST" ? { accessToken: "tok" } : []) };
+  });
+  render(<Manage group={group} />);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "New link" })));
+  expect(calls).toContain("POST /api/groups/me/members/b/access-link");
+  expect((screen.getByLabelText("Your personal link") as HTMLInputElement).value).toBe("https://cafe.test/sign-in#tok");
+  expect(screen.getByText(/Send this to Ben privately/)).toBeTruthy();
+});

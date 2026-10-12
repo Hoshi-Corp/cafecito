@@ -73,3 +73,14 @@ it("deletes my account after a warning that says what happens to the group", asy
   expect(asked[2]).not.toMatch(/owner|deleted too/);
   expect(calls).toContain("DELETE /api/groups/me/me");
 });
+
+it("makes a new personal link after confirming, and shows it once", async () => {
+  const calls = serve([], { ok: true, body: { accessToken: "newtok" } });
+  vi.stubGlobal("location", { origin: "https://cafe.test" });
+  vi.stubGlobal("confirm", () => true);
+  render(<Account group={group} />);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Get a new personal link" })));
+  expect(calls).toContain("POST /api/groups/me/me/access-link");
+  expect((screen.getByLabelText("Your personal link") as HTMLInputElement).value).toBe("https://cafe.test/sign-in#newtok");
+  expect(screen.getByRole("button", { name: "Get a new personal link" })).toBeTruthy(); // can make another
+});
