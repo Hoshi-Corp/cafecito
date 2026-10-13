@@ -11,7 +11,6 @@ export const QUANTA_PER_WEEK = 7 * QUANTA_PER_DAY;
 export const EMPTY_PATTERN = ".".repeat(QUANTA_PER_WEEK);
 
 export const toQuantum = (ms: number) => Math.floor(ms / QUANTUM_MS);
-export const quantumToMillis = (q: number) => q * QUANTUM_MS;
 
 const HOUR_MS = 3_600_000;
 // Offset lookups go through Intl and dominate the cost of every heatmap render. A zone's offset
@@ -104,16 +103,23 @@ export function paintPattern(
 /** `mark: null` removes the overrides so the weekly pattern shows through. */
 export function paintOverrides(
   overrides: Record<number, OverrideMark>,
-  startQ: number,
+  starts: number[],
   quanta: number,
   mark: OverrideMark | null,
 ): Record<number, OverrideMark> {
   const next = { ...overrides };
-  for (let i = 0; i < quanta; i++) {
-    if (mark) next[startQ + i] = mark;
-    else delete next[startQ + i];
-  }
+  for (const startQ of starts)
+    for (let i = 0; i < quanta; i++) {
+      if (mark) next[startQ + i] = mark;
+      else delete next[startQ + i];
+    }
   return next;
+}
+
+/** True if any quantum of the slot has a busy override. */
+export function slotHasBusy(member: Member, startQ: number, quanta: number): boolean {
+  for (let i = 0; i < quanta; i++) if (member.overrides[startQ + i] === "b") return true;
+  return false;
 }
 
 export interface WeekDay {

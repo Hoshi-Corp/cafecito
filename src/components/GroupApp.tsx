@@ -13,6 +13,7 @@ import {
   paintPattern,
   patternSlotMark,
   shiftPattern,
+  slotHasBusy,
   slotMark,
   summarize,
   toQuantum,
@@ -176,11 +177,10 @@ function GroupView({ group }: { group: Group }) {
 
   const paintWeek = (range: CellRange) =>
     updateMember(me.id, (m) => {
-      let overrides = m.overrides;
+      const starts: number[] = [];
       for (let col = range.col0; col <= range.col1; col++)
-        for (let row = range.row0; row <= range.row1; row++)
-          overrides = paintOverrides(overrides, week.days[col].startQ[row], quantaPerSlot, brush);
-      return { ...m, overrides };
+        for (let row = range.row0; row <= range.row1; row++) starts.push(week.days[col].startQ[row]);
+      return { ...m, overrides: paintOverrides(m.overrides, starts, quantaPerSlot, brush) };
     });
 
   const patternIndex = (col: number, row: number) =>
@@ -354,15 +354,15 @@ function GroupView({ group }: { group: Group }) {
           cellLabel={(col, row) => {
             const q = week.days[col].startQ[row];
             const mark = slotMark(me, q, quantaPerSlot);
-            const name = me.overrides[q] === "b" ? "busy" : mark ? MARK_NAME[mark] : "not marked";
+            const name = mark ? MARK_NAME[mark] : slotHasBusy(me, q, quantaPerSlot) ? "busy" : "not marked";
             return `${day(q, zone)} ${time(q, zone)}: ${name}`;
           }}
           cellStyle={(col, row) => {
             const q = week.days[col].startQ[row];
-            // Show a busy override only where it actually hides something.
-            if (me.overrides[q] === "b") return MARK_STYLE.b;
             const mark = slotMark(me, q, quantaPerSlot);
-            return mark ? MARK_STYLE[mark] : undefined;
+            if (mark) return MARK_STYLE[mark];
+            // A busy override anywhere in the slot hides it, so show it even if the first quantum is clear.
+            return slotHasBusy(me, q, quantaPerSlot) ? MARK_STYLE.b : undefined;
           }}
         />
       )}
