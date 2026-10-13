@@ -224,6 +224,16 @@ describe("my week tab", () => {
     ]);
   });
 
+  it("shows a slot as busy when only part of it is busy", async () => {
+    // Free 18:00-20:00 by pattern, busy 18:30-19:00 (e.g. painted at 30-minute slots); the group shows hours.
+    const q = Date.parse("2026-10-12T18:30:00Z") / 900_000;
+    const ana = { ...crew.members[0], overrides: { [q]: "b" as const, [q + 1]: "b" as const } };
+    const { label, cell } = await open({ ...crew, members: [ana, ...crew.members.slice(1)] });
+    click("My week");
+    expect(label(0, ROW_18)).toMatch(/: busy$/);
+    expect(cell(0, ROW_18).getAttribute("style")).toContain("--busy");
+  });
+
   it("can leave touches to scrolling", async () => {
     const { cell } = await open();
     click("My week");
