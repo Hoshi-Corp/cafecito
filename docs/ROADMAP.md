@@ -1,6 +1,6 @@
 # Cafecito: roadmap
 
-Status as of 2026-10-11. Release dates appear only once a release has shipped (see the table in the [README](../README.md)); each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
+Status as of 2026-10-13. Release dates appear only once a release has shipped (see the table in the [README](../README.md)); each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
 
 ## Released
 
@@ -9,6 +9,9 @@ Status as of 2026-10-11. Release dates appear only once a release has shipped (s
 | 0.1 Demo calendar | 2026-10-11 |
 | 0.2 Fix the model | 2026-10-11 |
 | 0.3 Shared storage | 2026-10-11 |
+| 0.4 Groups and invites | 2026-10-11 (in 1.0.0) |
+| 0.5 Live updates | 2026-10-11 (in 1.0.0) |
+| 1.0 Self-hosted release | 2026-10-11 |
 
 **0.1 Demo calendar.** Mobile-first Next.js app on browser-local demo data. Typical week, date overrides, group heatmap, who-is-free list, best times, per-person time zones, 15/30/60-minute slots.
 
@@ -18,7 +21,7 @@ Status as of 2026-10-11. Release dates appear only once a release has shipped (s
 
 ## Built, awaiting release
 
-All three ship with the next manual release (a `major` bump makes it 1.0.0).
+0.4, 0.5 and 1.0 shipped together as 1.0.0, so their sections below are history. 1.0.1 ships with the next manual release (a `patch` bump).
 
 ### 0.4 Groups and invites
 - ✅ Create a group; the owner generates, lists and revokes invite links (expiring, optional use limit). Tokens are stored hashed and shown once.
