@@ -8,6 +8,7 @@ import {
   buildWeek,
   markAt,
   paintOverrides,
+  slotHasBusy,
   paintPattern,
   shiftPattern,
   patternIndexAt,
@@ -58,14 +59,28 @@ describe("markAt", () => {
 
   it("lets overrides win over the pattern, and clears them again", () => {
     const at = q("2026-10-13T18:00", "America/Toronto");
-    const busy = { ...ana, overrides: paintOverrides({}, at, 4, "b") };
+    const busy = { ...ana, overrides: paintOverrides({}, [at], 4, "b") };
     expect(markAt(busy, at)).toBeNull();
     expect(markAt(busy, at + 4)).toBe("f");
     // The following Tuesday is untouched.
     expect(markAt(busy, q("2026-10-20T18:00", "America/Toronto"))).toBe("f");
 
-    const cleared = { ...busy, overrides: paintOverrides(busy.overrides, at, 4, null) };
+    const cleared = { ...busy, overrides: paintOverrides(busy.overrides, [at], 4, null) };
     expect(markAt(cleared, at)).toBe("f");
+  });
+
+  it("paints every slot of a drag in one pass", () => {
+    const painted = paintOverrides({ 1: "f" }, [10, 20], 2, "m");
+    expect(painted).toEqual({ 1: "f", 10: "m", 11: "m", 20: "m", 21: "m" });
+    expect(paintOverrides(painted, [10, 20], 2, null)).toEqual({ 1: "f" });
+  });
+
+  it("finds a busy override anywhere in a slot, not only its first quantum", () => {
+    const at = q("2026-10-13T18:00", "America/Toronto");
+    const halfBusy = { ...ana, overrides: paintOverrides({}, [at + 2], 2, "b") };
+    expect(slotHasBusy(halfBusy, at, 4)).toBe(true);
+    expect(slotHasBusy(halfBusy, at, 2)).toBe(false);
+    expect(slotMark(halfBusy, at, 4)).toBeNull();
   });
 });
 
