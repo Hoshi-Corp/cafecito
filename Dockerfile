@@ -3,11 +3,12 @@
 # in a small image. Data lives in a SQLite file under /data: mount a volume there.
 FROM node:26-alpine AS build
 WORKDIR /src
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Keep this pnpm version in step with "packageManager" in package.json (CI reads that one).
 # better-sqlite3 ships prebuilt binaries; skipping its node-gyp install script avoids needing a compiler here.
-RUN npm ci --ignore-scripts
+RUN npm install -g pnpm@12.11.2 && pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
-RUN npm run build
+RUN pnpm build
 
 FROM node:26-alpine
 WORKDIR /app
