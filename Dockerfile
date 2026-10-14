@@ -18,6 +18,7 @@ RUN mkdir /data && chown node /data
 VOLUME /data
 COPY --from=build /src/.next/standalone ./
 COPY --from=build /src/.next/static ./.next/static
+COPY --from=build /src/public ./public
 USER node
 EXPOSE 4174
 CMD ["node", "server.js"]

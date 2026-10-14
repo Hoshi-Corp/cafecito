@@ -32,8 +32,8 @@ src/lib/availability.ts   quanta math, markAt/slotMark, summarize, bestWindows, 
 src/lib/store.ts          client store: useGroup / updateGroup / updateMember, optimistic, per-member writes, SSE listener
 src/server/               SQLite (db, schema + migrations), validated own-rows-only writes, sessions and invites (groups.ts),
                           my account: devices, export, deletion, sign-in links (account.ts), in-memory pub/sub (events.ts),
-                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), the wishlist (places.ts), opt-in demo data (seed.ts)
-src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, invites, members, outings, places, events),
+                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), the wishlist (places.ts), which devices want notifications (push.ts), opt-in demo data (seed.ts)
+src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, me/push, invites, members, outings, places, events),
                           invites/[token] (info, join), sign-in (+ link)
 src/app/join/[token]      join screen
 src/app/sign-in, [token]  where a personal link (`/sign-in#token`) or an emailed one (`/sign-in/token`) lands
@@ -42,6 +42,8 @@ src/components/Outings   propose a best time (optionally from the wishlist), the
 src/components/Wishlist  the wishlist: add, edit, vote, rate, comment, mark visited, remove
 src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
 src/components/Account    my account: recovery email, devices, export, delete
+src/components/Notifications  the on/off switch for notifications on this device
+public/sw.js, src/app/manifest.ts  the service worker (shows a push, opens the app on a tap) and the web manifest
 src/components/Manage     owner: invite links, remove people
 src/components/WeekGrid   the paintable grid (pointer and keyboard)
 ```
@@ -75,6 +77,8 @@ place(id, group_id, name, link, map_link, notes, suggested_by, been_there, creat
 place_vote(place_id, member_id)                                                -- one per member and place; deleted with the member (a removed place keeps them)
 place_rating(place_id, member_id, stars)                                       -- 1 to 5, one per member and place; deleted with the place or the member
 place_comment(id, place_id, member_id, body, created_at)                       -- deleted with the place; member_id is set to null when its author leaves, the comment stays
+push_subscription(endpoint, token_hash, member_id, p256dh, auth, created_at)   -- one per device that turned notifications on; deleted with its session (sign-out) or its member; at most 5 per member
+push_key(id, public_key, private_key)                                          -- the server's one VAPID key pair, made on first use; the private key is never sent anywhere
 ```
 
 A write to overrides rewrites only the ranges around the change, merging equal neighbours. A daily prune deletes overrides and plans that ended more than a week ago, sessions unused for 180 days and expired sign-in links.
@@ -91,6 +95,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `DELETE /api/groups/:id/me` | Delete my account and data; plans, wishlist places and comments I wrote stay in the group without my name |
 | `PATCH /api/groups/:id/me/overrides` | Add or remove my overrides |
 | `GET`, `DELETE /api/groups/:id/me/sessions` | List my signed-in devices; sign out the others |
+| `GET`, `PUT`, `DELETE /api/groups/:id/me/push` | The server's public push key and whether this device has notifications on; turn them on with the browser's push subscription (https endpoint, keys checked; replaces this device's earlier one; the newest 5 devices per member are kept); turn them off |
 | `GET`, `POST /api/groups/:id/invites` | List live invites, create one (owner); the token is returned once |
 | `DELETE /api/groups/:id/invites/:inviteId` | Revoke an invite (owner) |
 | `DELETE /api/groups/:id/members/:memberId` | Remove a member (owner); their plans, wishlist places and comments stay without their name |
@@ -118,6 +123,18 @@ Writes are **per member and own-rows-only**. No call replaces the whole group. T
 ### Live updates
 
 A write that succeeds is published to the group's open streams (`events.ts`, in memory, one process). A profile change carries the member's new state and an override change carries only the marks that changed (a member's override history is never resent); clients apply either without a reload; settings changes, joins and removals carry only `reload`, and clients load the group again. The sender skips an echo of its own change while its writes are in flight, so a stale echo cannot undo a newer local edit. EventSource reconnects by itself and the client reloads on every reconnect, so a missed event is repaired. If the stream is refused three times (say a proxy blocks it), the client stops retrying until the next successful load. Removing a member closes their streams. Streams are not replayed: there is no event log, the reload is the resync.
+
+### Notifications
+
+Settled in the 1.1 design (the sending half is not built yet):
+
+- **Web push only**; email is not a channel. It needs HTTPS, a service worker (`public/sw.js`: it shows the message and opens the app when tapped, and caches nothing) and, on an iPhone, the app added to the Home Screen (hence the small web manifest).
+- **Two triggers**: someone proposed a plan; a plan you said yes to was deleted. Both come from actions that already exist. "A new window where everyone is free" and a weekly reminder are not built.
+- **Who gets them**: everyone in the group except the person who acted, on devices where the switch in Settings is on. Off by default, one switch per device, no per-type muting until there are more types.
+- **What is sent**: the person's name and the group's name, never a plan's title, place or time, because the text passes through the browser maker's push server.
+- **A device is a session.** A subscription belongs to the session that made it, so signing out (or "Sign out other devices", or the 180-day expiry) removes it.
+- **Keys**: the VAPID pair is made on first use and kept in `push_key`, so nothing needs configuring and a backup carries it. Losing it only means every device has to turn the switch on again.
+- **Sending** (next PR): the `web-push` package, in the background after the response, no retries; a 404 or 410 from the push server deletes that subscription.
 
 ### Auth
 

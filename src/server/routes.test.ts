@@ -35,6 +35,7 @@ const join = await import("@/app/api/invites/[token]/route");
 const accessLink = await import("@/app/api/groups/[id]/me/access-link/route");
 const memberLink = await import("@/app/api/groups/[id]/members/[memberId]/access-link/route");
 const sessions = await import("@/app/api/groups/[id]/me/sessions/route");
+const push = await import("@/app/api/groups/[id]/me/push/route");
 const signIn = await import("@/app/api/sign-in/route");
 const signInLink = await import("@/app/api/sign-in/link/route");
 const { handle, SESSION_COOKIE } = await import("./http");
@@ -311,6 +312,26 @@ describe("my account", () => {
     const list = await (await sessions.GET(req(), ctx())).json();
     expect(list).toEqual([{ device: "Safari on Mac OS", createdAt: expect.any(Number), lastSeen: expect.any(Number), current: true }]);
     expect(await (await sessions.DELETE(req(), ctx())).json()).toEqual({ signedOut: 0 });
+  });
+
+  it("turns notifications on and off for the calling device only", async () => {
+    const sub = { endpoint: "https://push.example/route", keys: { p256dh: "BPkey", auth: "auth" } };
+    const state = async () => (await push.GET(req(), ctx())).json();
+    const first = await state();
+    expect(first).toEqual({ publicKey: expect.stringMatching(/^[A-Za-z0-9_-]{80,}$/), subscribed: false });
+    expect((await push.PUT(req(sub, "text/plain"), ctx())).status).toBe(415);
+    expect((await push.PUT(req({ endpoint: "http://insecure.example/", keys: sub.keys }), ctx())).status).toBe(400);
+    expect((await push.PUT(req(sub), ctx())).status).toBe(200);
+    expect((await state()).subscribed).toBe(true);
+    as("kenji");
+    expect((await state()).subscribed).toBe(false); // another member's device is unaffected
+    expect((await push.DELETE(req(), ctx())).status).toBe(200);
+    as("you");
+    expect((await state()).subscribed).toBe(true);
+    expect((await push.DELETE(req(), ctx())).status).toBe(200);
+    expect((await state()).subscribed).toBe(false);
+    jar.clear();
+    expect((await push.GET(req(), ctx())).status).toBe(401);
   });
 
   it("renews the cookie of a session in use, at most daily", async () => {
