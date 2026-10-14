@@ -134,4 +134,19 @@ export const MIGRATIONS = [
   `
   ALTER TABLE outing ADD COLUMN place_id TEXT REFERENCES place(id) ON DELETE SET NULL;
   `,
+  // 1.1: a comment stays when its author leaves (shown as written by a deleted user). SQLite cannot relax a column in place,
+  // so the table is rebuilt with every row copied.
+  `
+  CREATE TABLE place_comment_new (
+    id TEXT PRIMARY KEY,
+    place_id TEXT NOT NULL REFERENCES place(id) ON DELETE CASCADE,
+    member_id TEXT REFERENCES member(id) ON DELETE SET NULL,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  INSERT INTO place_comment_new SELECT id, place_id, member_id, body, created_at FROM place_comment;
+  DROP TABLE place_comment;
+  ALTER TABLE place_comment_new RENAME TO place_comment;
+  CREATE INDEX place_comment_place ON place_comment(place_id);
+  `,
 ];

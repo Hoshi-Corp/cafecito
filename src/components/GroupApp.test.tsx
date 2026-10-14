@@ -602,6 +602,17 @@ describe("wishlist", () => {
     expect(screen.getByRole("button", { name: "Delete comment by Ben" })).toBeTruthy();
   });
 
+  it("shows a comment of someone who left as written by a deleted user, and only the owner can delete it", async () => {
+    const orphan = { ...place, comments: [{ id: "k9", memberId: null, body: "See you", createdAt: 1 }] };
+    await open({ ...crew, meId: "c", places: [orphan] });
+    expect(screen.getByText("See you", { exact: false }).textContent).toBe("Deleted user: See you");
+    expect(screen.queryByRole("button", { name: "Delete comment by a deleted user" })).toBeNull();
+    cleanup();
+    await open({ ...crew, places: [orphan] }); // Ana owns the group
+    fireEvent.click(screen.getByRole("button", { name: "Delete comment by a deleted user" }));
+    expect(await sent(1)).toEqual([{ path: "/places/p1/comments/k9", body: null }]);
+  });
+
   it("does not send an empty comment, and shows why a comment was refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const group = { ...crew, places: [place] };

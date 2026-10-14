@@ -74,7 +74,7 @@ rsvp(outing_id, member_id, answer)                                             -
 place(id, group_id, name, link, map_link, notes, suggested_by, been_there, created_at)  -- suggested_by is set to null when that member leaves
 place_vote(place_id, member_id)                                                -- one per member and place; deleted with the place or the member
 place_rating(place_id, member_id, stars)                                       -- 1 to 5, one per member and place; deleted with the place or the member
-place_comment(id, place_id, member_id, body, created_at)                       -- deleted with the place or the member
+place_comment(id, place_id, member_id, body, created_at)                       -- deleted with the place; member_id is set to null when its author leaves, the comment stays
 ```
 
 A write to overrides rewrites only the ranges around the change, merging equal neighbours. A daily prune deletes overrides and plans that ended more than a week ago, sessions unused for 180 days and expired sign-in links.
@@ -109,7 +109,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/vote` | Add or take back my own "I want to go" vote |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/rating` | Set my star rating (1 to 5, replacing the earlier one) or take it back |
 | `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters, 300 comments per group) |
-| `DELETE /api/groups/:id/places/:placeId/comments/:commentId` | Delete a comment (whoever wrote it, or the owner) |
+| `DELETE /api/groups/:id/places/:placeId/comments/:commentId` | Delete a comment (whoever wrote it, or the owner; only the owner once the author has left) |
 | `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes, ratings and comments go with it |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 

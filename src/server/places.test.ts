@@ -171,6 +171,16 @@ describe("ratings and comments", () => {
     expect(status(() => deleteComment(db, "demo", "you", id, "nope"))).toBe(404);
   });
 
+  it("lets only the owner delete the comment of someone who left", () => {
+    const db = fresh();
+    const id = add(db);
+    const orphan = addComment(db, "demo", "diego", id, { body: "bye" }).id;
+    removeMember(db, "demo", "you", "diego");
+    expect(status(() => deleteComment(db, "demo", "sofia", id, orphan))).toBe(403);
+    deleteComment(db, "demo", "you", id, orphan);
+    expect(listPlaces(db, "demo")[0].comments).toEqual([]);
+  });
+
   it("never reaches a place or comment of another group", () => {
     const db = fresh();
     const other = createGroup(db, { groupName: "Other", name: "Zed" });
@@ -183,7 +193,7 @@ describe("ratings and comments", () => {
     expect(status(() => deleteComment(db, "demo", "you", mine, comment))).toBe(404); // right group, wrong place
   });
 
-  it("removes a leaving member's ratings and comments, and everything goes with the group", () => {
+  it("keeps a leaving member's comments without an author, drops their ratings, and everything goes with the group", () => {
     const db = fresh();
     const id = add(db);
     ratePlace(db, "demo", "diego", id, { stars: 4 });
@@ -191,7 +201,7 @@ describe("ratings and comments", () => {
     addComment(db, "demo", "diego", id, { body: "mine" });
     addComment(db, "demo", "sofia", id, { body: "kept" });
     removeMember(db, "demo", "you", "diego");
-    expect(listPlaces(db, "demo")[0]).toMatchObject({ ratings: { sofia: 3 }, comments: [{ body: "kept" }] });
+    expect(listPlaces(db, "demo")[0]).toMatchObject({ ratings: { sofia: 3 }, comments: [{ memberId: null, body: "mine" }, { memberId: "sofia", body: "kept" }] });
     for (const m of ["camille", "sofia", "kenji", "you"]) deleteMe(db, "demo", m);
     expect(db.prepare(`SELECT (SELECT count(*) FROM place_rating) + (SELECT count(*) FROM place_comment) n`).get()).toEqual({ n: 0 });
   });
