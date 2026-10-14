@@ -153,7 +153,7 @@ describe("wishlist rating and comment routes", () => {
     const one = (placeId: string, commentId = "") => ctx({ placeId, commentId });
     as("camille");
     await places.POST(req({ name: "Café X" }), ctx());
-    const { id } = getDb().prepare(`SELECT id FROM place`).get() as { id: string };
+    const { id } = getDb().prepare(`SELECT id FROM place WHERE deleted_at IS NULL`).get() as { id: string };
     jar.clear();
     expect((await placeRating.PUT(req({ stars: 4 }), one(id))).status).toBe(401);
     expect((await placeComments.POST(req({ body: "hi" }), one(id))).status).toBe(401);

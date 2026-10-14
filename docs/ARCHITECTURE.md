@@ -69,10 +69,10 @@ override(member_id, start_q, end_q, mark)                                      -
 invite(id, token_hash, group_id, expires_at, max_uses, uses, revoked_at)
 session(token_hash, member_id, device, created_at, last_seen)                  -- deleted with the member
 sign_in_link(token_hash, member_id, expires_at)                                -- single use, 30 minutes
-outing(id, group_id, title, place, place_id, start_q, end_q, created_by)        -- created_by is set to null when that member leaves; place_id is set to null when that wishlist place is deleted, and the `place` text stays
+outing(id, group_id, title, place, place_id, start_q, end_q, created_by)        -- created_by is set to null when that member leaves; a removed wishlist place only disappears from the list, so the plan keeps its place_id and its `place` text
 rsvp(outing_id, member_id, answer)                                             -- answer: y | m | n; deleted with the outing or the member
-place(id, group_id, name, link, map_link, notes, suggested_by, been_there, created_at)  -- suggested_by is set to null when that member leaves
-place_vote(place_id, member_id)                                                -- one per member and place; deleted with the place or the member
+place(id, group_id, name, link, map_link, notes, suggested_by, been_there, created_at, deleted_at)  -- suggested_by is set to null when that member leaves; deleted_at is set when removed (hidden, not erased)
+place_vote(place_id, member_id)                                                -- one per member and place; deleted with the member (a removed place keeps them)
 place_rating(place_id, member_id, stars)                                       -- 1 to 5, one per member and place; deleted with the place or the member
 place_comment(id, place_id, member_id, body, created_at)                       -- deleted with the place; member_id is set to null when its author leaves, the comment stays
 ```
@@ -104,13 +104,13 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; it may point at a wishlist place of the group (`placeId`, whose name stands in for an empty place); the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id` |
 | `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
 | `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there |
-| `POST /api/groups/:id/places` | Add a café or restaurant to the wishlist (name, optional website and map link, notes; http(s) links only; up to 100 places per group); the places come with `GET /api/groups/:id` |
+| `POST /api/groups/:id/places` | Add a café or restaurant to the wishlist (name, optional website and map link, notes; http(s) links only; up to 100 on the list, 500 counting removed ones); the places come with `GET /api/groups/:id` |
 | `PATCH /api/groups/:id/places/:placeId` | Edit the details (whoever suggested it, or the owner), or mark it as visited (anyone in the group) |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/vote` | Add or take back my own "I want to go" vote |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/rating` | Set my star rating (1 to 5, replacing the earlier one) or take it back |
-| `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters, 300 comments per group) |
+| `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters; 300 comments on the list per group, 3,000 counting those on removed places) |
 | `DELETE /api/groups/:id/places/:placeId/comments/:commentId` | Delete a comment (whoever wrote it, or the owner; only the owner once the author has left) |
-| `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes, ratings and comments go with it |
+| `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner): it leaves the list but stays in the database with its votes, ratings and comments, and can no longer be voted on, rated, commented on, edited or attached to a plan |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
 Writes are **per member and own-rows-only**. No call replaces the whole group. The owner can also act on other members (remove them, replace their personal link), and deleting a plan adds one more: it clears its proposer's override marks for that plan's time (`deleteOuting`), so when the owner deletes someone else's plan, that member's availability changes. It only removes marks, never sets any.

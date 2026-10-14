@@ -149,4 +149,8 @@ export const MIGRATIONS = [
   ALTER TABLE place_comment_new RENAME TO place_comment;
   CREATE INDEX place_comment_place ON place_comment(place_id);
   `,
+  // 1.1: removing a wishlist place hides it and keeps its votes, ratings and comments as history.
+  `
+  ALTER TABLE place ADD COLUMN deleted_at INTEGER;
+  `,
 ];

@@ -4,11 +4,19 @@ import { HttpError, assertOwner, bad, cleanText, isObject } from "./groups";
 import type { Place, PlaceComment } from "../lib/types";
 
 export const MAX_PLACES = 100;
-// Comments are counted per group, so one group cannot make every load carry a huge list.
+// shortcut: removed places stay for good and count toward this, so a group that adds and removes 500 places stops being able to add
+// more; add a purge of old removed places if that ever happens.
+export const MAX_PLACE_ROWS = 500;
+// Comments on the list are counted per group, so one group cannot make every load carry a huge list; comments on removed places
+// no longer load, so they only count toward the larger overall limit.
 export const MAX_COMMENTS = 300;
+// shortcut: comments on removed places stay for good and count toward this, so a group that reaches it can no longer comment;
+// add a purge of old removed places if that ever happens.
+export const MAX_COMMENT_ROWS = 3000;
 
-/** For a table with a `place_id`: only the places of one group (bind the group id). */
-const IN_GROUP = `place_id IN (SELECT id FROM place WHERE group_id = ?)`;
+/** For a table with a `place_id` (bind the group id): the places of one group that are on the list, or all of them, removed ones included. */
+const ON_LIST = `place_id IN (SELECT id FROM place WHERE group_id = ? AND deleted_at IS NULL)`;
+const EVER_IN_GROUP = `place_id IN (SELECT id FROM place WHERE group_id = ?)`;
 
 /** "" or an http(s) link: anything else (javascript:, data:) must never become a clickable href. Stored as the parser writes it. */
 function cleanUrl(v: unknown) {
@@ -25,19 +33,19 @@ function cleanUrl(v: unknown) {
 export function listPlaces(db: Db, groupId: string): Place[] {
   const rows = db
     .prepare(
-      `SELECT id, name, link, map_link mapLink, notes, suggested_by suggestedBy, been_there beenThere FROM place WHERE group_id = ? ORDER BY created_at, rowid`,
+      `SELECT id, name, link, map_link mapLink, notes, suggested_by suggestedBy, been_there beenThere FROM place WHERE group_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid`,
     )
     .all(groupId) as (Omit<Place, "votes" | "beenThere" | "ratings" | "comments"> & { beenThere: number })[];
   const votes = db
-    .prepare(`SELECT place_id id, member_id memberId FROM place_vote WHERE ${IN_GROUP}`)
+    .prepare(`SELECT place_id id, member_id memberId FROM place_vote WHERE ${ON_LIST}`)
     .all(groupId) as { id: string; memberId: string }[];
-  const ratings = db.prepare(`SELECT place_id id, member_id memberId, stars FROM place_rating WHERE ${IN_GROUP}`).all(groupId) as {
+  const ratings = db.prepare(`SELECT place_id id, member_id memberId, stars FROM place_rating WHERE ${ON_LIST}`).all(groupId) as {
     id: string;
     memberId: string;
     stars: number;
   }[];
   const comments = db
-    .prepare(`SELECT id, place_id placeId, member_id memberId, body, created_at createdAt FROM place_comment WHERE ${IN_GROUP} ORDER BY created_at, rowid`)
+    .prepare(`SELECT id, place_id placeId, member_id memberId, body, created_at createdAt FROM place_comment WHERE ${ON_LIST} ORDER BY created_at, rowid`)
     .all(groupId) as (PlaceComment & { placeId: string })[];
   return rows.map((p) => ({
     ...p,
@@ -51,8 +59,11 @@ export function listPlaces(db: Db, groupId: string): Place[] {
 export function createPlace(db: Db, groupId: string, memberId: string, body: unknown, now = Date.now()) {
   if (!isObject(body)) throw bad("Expected an object");
   const values = [cleanText(body.name, 80, true), cleanUrl(body.link), cleanUrl(body.mapLink), cleanText(body.notes, 500, false)];
-  const { n } = db.prepare(`SELECT count(*) n FROM place WHERE group_id = ?`).get(groupId) as { n: number };
-  if (n >= MAX_PLACES) throw new HttpError(409, `The wishlist can hold ${MAX_PLACES} places`);
+  const { n, listed } = db
+    .prepare(`SELECT count(*) n, count(*) FILTER (WHERE deleted_at IS NULL) listed FROM place WHERE group_id = ?`)
+    .get(groupId) as { n: number; listed: number };
+  if (listed >= MAX_PLACES) throw new HttpError(409, `The wishlist can hold ${MAX_PLACES} places`);
+  if (n >= MAX_PLACE_ROWS) throw new HttpError(409, "This group has used up its places, including removed ones");
   const id = randomUUID();
   db.prepare(`INSERT INTO place (id, group_id, name, link, map_link, notes, suggested_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id, groupId, ...values, memberId, now,
@@ -60,9 +71,9 @@ export function createPlace(db: Db, groupId: string, memberId: string, body: unk
   return { id };
 }
 
-/** The place, if it is in the caller's group; `suggestedBy` says who may edit it. */
+/** The place, if it is in the caller's group and not removed; `suggestedBy` says who may edit it. */
 function findPlace(db: Db, groupId: string, placeId: string) {
-  const p = db.prepare(`SELECT suggested_by suggestedBy FROM place WHERE id = ? AND group_id = ?`).get(placeId, groupId) as
+  const p = db.prepare(`SELECT suggested_by suggestedBy FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL`).get(placeId, groupId) as
     | { suggestedBy: string | null }
     | undefined;
   if (!p) throw new HttpError(404, "No such place");
@@ -102,9 +113,10 @@ export function votePlace(db: Db, groupId: string, memberId: string, placeId: st
   );
 }
 
-export function deletePlace(db: Db, groupId: string, memberId: string, placeId: string) {
+/** Takes the place off the list; its votes, ratings and comments stay in the database. */
+export function deletePlace(db: Db, groupId: string, memberId: string, placeId: string, now = Date.now()) {
   assertMayEdit(db, memberId, findPlace(db, groupId, placeId).suggestedBy);
-  db.prepare(`DELETE FROM place WHERE id = ?`).run(placeId);
+  db.prepare(`UPDATE place SET deleted_at = ? WHERE id = ?`).run(now, placeId);
 }
 
 /** My own star rating (1 to 5), replacing an earlier one. */
@@ -126,10 +138,13 @@ export function addComment(db: Db, groupId: string, memberId: string, placeId: s
   if (!isObject(body)) throw bad("Expected an object");
   findPlace(db, groupId, placeId);
   const text = cleanText(body.body, 500, true);
-  const { n } = db
-    .prepare(`SELECT count(*) n FROM place_comment WHERE ${IN_GROUP}`)
-    .get(groupId) as { n: number };
-  if (n >= MAX_COMMENTS) throw new HttpError(409, `The wishlist can hold ${MAX_COMMENTS} comments`);
+  const { listed, n } = db
+    .prepare(
+      `SELECT (SELECT count(*) FROM place_comment WHERE ${ON_LIST}) listed, (SELECT count(*) FROM place_comment WHERE ${EVER_IN_GROUP}) n`,
+    )
+    .get(groupId, groupId) as { listed: number; n: number };
+  if (listed >= MAX_COMMENTS) throw new HttpError(409, `The wishlist can hold ${MAX_COMMENTS} comments`);
+  if (n >= MAX_COMMENT_ROWS) throw new HttpError(409, "This group has used up its comments, including those on removed places");
   const id = randomUUID();
   db.prepare(`INSERT INTO place_comment (id, place_id, member_id, body, created_at) VALUES (?, ?, ?, ?, ?)`).run(id, placeId, memberId, text, now);
   return { id };

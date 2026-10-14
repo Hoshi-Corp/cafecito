@@ -44,7 +44,7 @@ export function createOuting(db: Db, groupId: string, memberId: string, body: un
   let placeId: string | null = null;
   if (body.placeId !== undefined && body.placeId !== null) {
     if (typeof body.placeId !== "string") throw bad("Invalid place");
-    const p = db.prepare(`SELECT id, name FROM place WHERE id = ? AND group_id = ?`).get(body.placeId, groupId) as { id: string; name: string } | undefined;
+    const p = db.prepare(`SELECT id, name FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL`).get(body.placeId, groupId) as { id: string; name: string } | undefined;
     if (!p) throw new HttpError(404, "No such place");
     placeId = p.id;
     place ||= p.name.slice(0, 120);

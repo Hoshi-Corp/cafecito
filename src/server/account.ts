@@ -62,11 +62,11 @@ export function exportMe(db: Db, memberId: string) {
                 EXISTS (SELECT 1 FROM place_vote v WHERE v.place_id = p.id AND v.member_id = @m) votedByMe,
                 (SELECT stars FROM place_rating r WHERE r.place_id = p.id AND r.member_id = @m) myStars,
                 EXISTS (SELECT 1 FROM place_comment c WHERE c.place_id = p.id AND c.member_id = @m) commented,
-                p.created_at createdAt, p.rowid rid
-         FROM place p
+                p.deleted_at IS NOT NULL removed, p.created_at createdAt, p.rowid rid
+         FROM place p WHERE p.group_id = (SELECT group_id FROM member WHERE id = @m)
        ) WHERE suggestedByMe OR votedByMe OR myStars IS NOT NULL OR commented ORDER BY createdAt, rid`,
     )
-    .all({ m: memberId }) as { id: string; name: string; link: string; mapLink: string; notes: string; beenThere: number; suggestedByMe: number | null; votedByMe: number; myStars: number | null }[];
+    .all({ m: memberId }) as { id: string; name: string; link: string; mapLink: string; notes: string; beenThere: number; suggestedByMe: number | null; votedByMe: number; myStars: number | null; removed: number }[];
   const comments = db
     .prepare(`SELECT place_id placeId, body, created_at createdAt FROM place_comment WHERE member_id = ? ORDER BY created_at, rowid`)
     .all(memberId) as { placeId: string; body: string; createdAt: number }[];
@@ -93,10 +93,11 @@ export function exportMe(db: Db, memberId: string) {
       beenThere: p.beenThere === 1,
       suggestedByMe: p.suggestedByMe === 1,
       votedByMe: p.votedByMe === 1,
+      removed: p.removed === 1,
       myStars: p.myStars,
       myComments: comments.filter((c) => c.placeId === p.id).map((c) => ({ at: iso(c.createdAt), text: c.body })),
     })),
-    placesFormat: "wishlist places I suggested, voted for, rated or commented on; myStars 1 to 5 or null",
+    placesFormat: "wishlist places I suggested, voted for, rated or commented on, removed ones included (removed: true); myStars 1 to 5 or null",
     devices: sessions.map((s) => ({ device: s.device, signedIn: iso(s.created_at), lastUsed: iso(s.last_seen) })),
   };
 }
