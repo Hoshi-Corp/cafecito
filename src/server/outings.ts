@@ -76,8 +76,15 @@ export function answerOuting(db: Db, groupId: string, memberId: string, outingId
 
 /** The person who proposed it, or the owner. */
 export function deleteOuting(db: Db, groupId: string, memberId: string, outingId: string) {
-  const o = db.prepare(`SELECT created_by createdBy FROM outing WHERE id = ? AND group_id = ?`).get(outingId, groupId) as { createdBy: string | null } | undefined;
+  const o = db.prepare(`SELECT created_by createdBy, start_q startQ, end_q endQ FROM outing WHERE id = ? AND group_id = ?`).get(outingId, groupId) as
+    | { createdBy: string | null; startQ: number; endQ: number }
+    | undefined;
   if (!o) throw new HttpError(404, "No such outing");
   if (o.createdBy !== memberId) assertOwner(db, memberId);
-  db.prepare(`DELETE FROM outing WHERE id = ?`).run(outingId);
+  db.transaction(() => {
+    db.prepare(`DELETE FROM outing WHERE id = ?`).run(outingId);
+    // Proposing marked the author busy; give them their typical week back.
+    // shortcut: clears every mark in that range, also one from another plan or by hand; track marks per plan if that bites.
+    if (o.createdBy) patchOverrides(db, o.createdBy, { remove: Array.from({ length: o.endQ - o.startQ }, (_, i) => o.startQ + i) });
+  })();
 }

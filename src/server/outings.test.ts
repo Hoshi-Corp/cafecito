@@ -66,6 +66,15 @@ describe("outings", () => {
     expect(busy("diego")).toEqual([]);
   });
 
+  it("gives the proposer their week back when the plan is deleted, by them or by the owner", () => {
+    const db = fresh();
+    const overrides = (id: string) => Object.keys(loadGroup(db, "demo", "you").members.find((m) => m.id === id)!.overrides);
+    deleteOuting(db, "demo", "camille", make(db));
+    expect(overrides("camille")).toEqual([]);
+    deleteOuting(db, "demo", "you", make(db));
+    expect(overrides("camille")).toEqual([]);
+  });
+
   it("only accepts a time the group is free for", () => {
     const db = fresh();
     const windows = bestWindows(loadGroup(db, "demo", "you").members.filter(isSetUp), Q + 1, Q + 1 + 14 * QUANTA_PER_DAY, { limit: Infinity });
