@@ -10,7 +10,7 @@ const fresh = () => {
   seed(db);
   return db;
 };
-const sub = (n: number | string = 1) => ({ endpoint: `https://push.example/${n}`, keys: { p256dh: "BPkey_-1", auth: "auth_-1" } });
+const sub = (n: number | string = 1) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${n}`, keys: { p256dh: "BPkey_-1", auth: "auth_-1" } });
 const device = (db: ReturnType<typeof fresh>, member: string, token: string) => (startSession(db, member, "", token), hash(token));
 const status = (fn: () => void) => {
   try {
@@ -46,15 +46,28 @@ describe("push subscriptions", () => {
     expect(pushState(db, a).subscribed).toBe(false);
   });
 
+  it("accepts the push services of the main browsers", () => {
+    const db = fresh();
+    const hosts = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com", "wns2-par02p.notify.windows.com"];
+    hosts.forEach((host, i) => subscribePush(db, "you", device(db, "you", `h${i}`), { ...sub(), endpoint: `https://${host}/x/${i}` }));
+    expect(rows(db)).toBe(hosts.length);
+  });
+
   it("refuses a malformed subscription", () => {
     const db = fresh();
     const a = device(db, "you", "a");
     const bad = [
       null,
       {},
-      { ...sub(), endpoint: "http://push.example/1" },
+      { ...sub(), endpoint: "http://fcm.googleapis.com/fcm/send/1" },
       { ...sub(), endpoint: "not a url" },
-      { ...sub(), endpoint: `https://push.example/${"x".repeat(2100)}` },
+      // Anything but a real push service: the server will POST to this address.
+      { ...sub(), endpoint: "https://internal.example/hook" },
+      { ...sub(), endpoint: "https://192.168.0.1/admin" },
+      { ...sub(), endpoint: "https://fcm.googleapis.com.evil.example/x" },
+      { ...sub(), endpoint: "https://fcm.googleapis.com@evil.example/x" },
+      { ...sub(), endpoint: "https://fcm.googleapis.com:8443/x" },
+      { ...sub(), endpoint: `https://fcm.googleapis.com/${"x".repeat(2100)}` },
       { endpoint: sub().endpoint },
       { ...sub(), keys: { p256dh: "has space", auth: "ok" } },
       { ...sub(), keys: { p256dh: "ok", auth: 5 } },
@@ -67,7 +80,7 @@ describe("push subscriptions", () => {
     const db = fresh();
     for (let i = 0; i < MAX_DEVICES + 1; i++) subscribePush(db, "you", device(db, "you", `t${i}`), sub(i), 1000 + i);
     const kept = (db.prepare(`SELECT endpoint FROM push_subscription ORDER BY created_at`).all() as { endpoint: string }[]).map((r) => r.endpoint);
-    expect(kept).toEqual([1, 2, 3, 4, 5].map((i) => `https://push.example/${i}`));
+    expect(kept).toEqual([1, 2, 3, 4, 5].map((i) => `https://fcm.googleapis.com/fcm/send/${i}`));
   });
 
   it("gives a browser's endpoint to whoever subscribes with it last", () => {
@@ -85,7 +98,7 @@ describe("push subscriptions", () => {
     subscribePush(db, "camille", device(db, "camille", "c"), sub(3));
     const data = exportMe(db, "you");
     expect(data.notificationDevices).toBe(2);
-    expect(JSON.stringify(data)).not.toContain("push.example");
+    expect(JSON.stringify(data)).not.toContain("fcm.googleapis.com");
   });
 
   it("goes with the device's sign-out and with the member", () => {

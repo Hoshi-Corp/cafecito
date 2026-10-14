@@ -315,7 +315,7 @@ describe("my account", () => {
   });
 
   it("turns notifications on and off for the calling device only", async () => {
-    const sub = { endpoint: "https://push.example/route", keys: { p256dh: "BPkey", auth: "auth" } };
+    const sub = { endpoint: "https://fcm.googleapis.com/fcm/send/route", keys: { p256dh: "BPkey", auth: "auth" } };
     const state = async () => (await push.GET(req(), ctx())).json();
     const first = await state();
     expect(first).toEqual({ publicKey: expect.stringMatching(/^[A-Za-z0-9_-]{80,}$/), subscribed: false });

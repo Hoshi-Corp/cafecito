@@ -25,7 +25,7 @@ const whyNot = () =>
   !window.isSecureContext
     ? "Notifications need a secure (https) address, and this page is not on one. Ask whoever runs this server."
     : isApplePhoneOrTablet()
-      ? "On an iPhone or iPad, add Cafecito to the Home Screen first (Share, then Add to Home Screen) and open it from there."
+      ? "On an iPhone or iPad, add Cafecito to the Home Screen first (Share, then Add to Home Screen) and open it from there. You will need to sign in again there, so keep your personal link handy."
       : "This browser cannot show notifications.";
 
 /** One switch: notifications on this device. */
@@ -39,10 +39,15 @@ export function Notifications() {
       call("/me/push", "GET")
         .then((res) => (res.ok ? res.json() : null))
         .then(async (s: State | null) => {
-          // The server's row can outlive the browser's: permission revoked, or site data cleared. Show what is true and tidy the row.
-          if (s?.subscribed && !(Notification.permission === "granted" && (await browserSubscription()))) {
+          // The server's row and the browser's can disagree. Show what is true, and fix the server's side.
+          const sub = s && Notification.permission === "granted" ? await browserSubscription() : null;
+          if (s?.subscribed && !sub) {
+            // Permission revoked or site data cleared: the row would send to nobody.
             await call("/me/push", "DELETE");
             s = { ...s, subscribed: false };
+          } else if (s && !s.subscribed && sub) {
+            // This browser still gets pushes through an earlier session's row (a new sign-in on the same browser): move it here.
+            if ((await call("/me/push", "PUT", sub.toJSON())).ok) s = { ...s, subscribed: true };
           }
           setState(s);
         })

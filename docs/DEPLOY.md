@@ -178,6 +178,10 @@ To always know what you are running, you can use a version number instead of `la
 | `CAFECITO_DB` | `/data/cafecito.db` | Where the database lives in the container. |
 | `CAFECITO_DEMO` | off | `1` adds a demo group with public sign-in tokens. **Never** on a server others can reach. |
 
+## Notifications
+
+Members can turn on push notifications in Settings, one switch per device. They need the HTTPS address from step 1 (browsers refuse push on plain HTTP). On an iPhone or iPad the app must first be added to the Home Screen (Share, then Add to Home Screen); the installed app starts signed out, so the member needs their personal link there. Only the push services of Chrome and Android (Google), Firefox, Safari and Edge are accepted; the server's key pair is made on first use and lives in the database, so backups carry it.
+
 ## Limit who can create groups
 
 Cafecito has no switch for this yet. Once your group exists, you can make Caddy refuse new groups. Replace the `Caddyfile` with:

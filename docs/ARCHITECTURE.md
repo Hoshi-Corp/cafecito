@@ -95,7 +95,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `DELETE /api/groups/:id/me` | Delete my account and data; plans, wishlist places and comments I wrote stay in the group without my name |
 | `PATCH /api/groups/:id/me/overrides` | Add or remove my overrides |
 | `GET`, `DELETE /api/groups/:id/me/sessions` | List my signed-in devices; sign out the others |
-| `GET`, `PUT`, `DELETE /api/groups/:id/me/push` | The server's public push key and whether this device has notifications on; turn them on with the browser's push subscription (https endpoint, keys checked; replaces this device's earlier one; the newest 5 devices per member are kept); turn them off |
+| `GET`, `PUT`, `DELETE /api/groups/:id/me/push` | The server's public push key and whether this device has notifications on; turn them on with the browser's push subscription (an https endpoint on a major browser's push service, keys checked; replaces this device's earlier one; the newest 5 devices per member are kept); turn them off |
 | `GET`, `POST /api/groups/:id/invites` | List live invites, create one (owner); the token is returned once |
 | `DELETE /api/groups/:id/invites/:inviteId` | Revoke an invite (owner) |
 | `DELETE /api/groups/:id/members/:memberId` | Remove a member (owner); their plans, wishlist places and comments stay without their name |

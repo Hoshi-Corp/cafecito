@@ -117,6 +117,13 @@ it("shows off, and clears the server's row, when the browser no longer has the s
   }
 });
 
+it("takes over a subscription the browser still holds from an earlier sign-in", async () => {
+  const { calls } = browser("granted", { held: true, start: "granted" });
+  render(<Notifications />);
+  expect(((await screen.findByRole("checkbox")) as HTMLInputElement).checked).toBe(true);
+  expect(calls).toContain("PUT /api/groups/me/me/push");
+});
+
 it("keeps the switch on when the browser and the server agree", async () => {
   const { calls } = browser("granted", { serverKnows: true });
   render(<Notifications />);

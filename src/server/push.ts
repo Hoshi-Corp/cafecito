@@ -26,9 +26,13 @@ export const pushState = (db: Db, tokenHash: string) => ({
 
 // shortcut: key length is capped at 200 characters (real keys are under 90); loosen if a browser ever sends longer ones.
 const BASE64URL = /^[A-Za-z0-9_-]{1,200}$/;
-const isHttps = (s: string) => {
+// shortcut: only the big browsers' push services are accepted, because the server will POST to whatever address is stored
+// (a member could otherwise aim it at a service on the server's own network). Add a host here for another service, such as UnifiedPush.
+const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9-]+\.notify\.windows\.com)$/;
+const isPushService = (s: string) => {
   try {
-    return new URL(s).protocol === "https:";
+    const url = new URL(s);
+    return url.protocol === "https:" && !url.port && PUSH_HOSTS.test(url.hostname);
   } catch {
     return false;
   }
@@ -41,7 +45,7 @@ export function subscribePush(db: Db, memberId: string, tokenHash: string, body:
   const { endpoint } = sub;
   const { p256dh, auth } = keys;
   if (
-    typeof endpoint !== "string" || endpoint.length > 2048 || !isHttps(endpoint) ||
+    typeof endpoint !== "string" || endpoint.length > 2048 || !isPushService(endpoint) ||
     typeof p256dh !== "string" || !BASE64URL.test(p256dh) ||
     typeof auth !== "string" || !BASE64URL.test(auth)
   )
