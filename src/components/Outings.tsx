@@ -2,7 +2,7 @@
 
 import { DateTime } from "luxon";
 import { useState } from "react";
-import { QUANTUM_MS } from "@/lib/availability";
+import { MAX_OUTING_QUANTA, QUANTUM_MS } from "@/lib/availability";
 import { answerOuting, proposeOuting, removeOuting } from "@/lib/store";
 import type { Group, Outing, Rsvp } from "@/lib/types";
 
@@ -11,9 +11,6 @@ const ANSWERS: { value: Rsvp; label: string }[] = [
   { value: "m", label: "Maybe" },
   { value: "n", label: "No" },
 ];
-
-// shortcut: a proposal covers at most the first 4 hours of a best window, with no time editing; add start/end fields if that is too rigid.
-const MAX_PROPOSED_QUANTA = 16;
 
 const when = (o: { startQ: number; endQ: number }, zone: string) => {
   const t = (q: number) => DateTime.fromMillis(q * QUANTUM_MS, { zone }).toLocaleString(DateTime.TIME_SIMPLE);
@@ -33,7 +30,7 @@ export function ProposeForm({
 }) {
   const [title, setTitle] = useState("");
   const [place, setPlace] = useState("");
-  const slot = { startQ: w.startQ, endQ: Math.min(w.endQ, w.startQ + MAX_PROPOSED_QUANTA) };
+  const slot = { startQ: w.startQ, endQ: Math.min(w.endQ, w.startQ + MAX_OUTING_QUANTA) };
   const field = "rounded-md border border-line bg-cell px-2 py-1";
   return (
     <form
@@ -110,7 +107,11 @@ function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; z
           </button>
         ))}
         <label className="ml-1 flex items-center gap-1 text-muted">
-          <input type="checkbox" checked={markBusy} onChange={(e) => setMarkBusy(e.target.checked)} />
+          <input type="checkbox" checked={markBusy} onChange={(e) => {
+            setMarkBusy(e.target.checked);
+            // Already said yes: ticking the box applies it now, instead of waiting for another click on Yes.
+            if (e.target.checked && mine === "y") answerOuting(o.id, "y", true);
+          }} />
           Mark busy in my week when I say yes
         </label>
       </div>

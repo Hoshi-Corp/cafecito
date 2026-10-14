@@ -359,6 +359,16 @@ describe("outings", () => {
     expect(await sent(1)).toEqual([{ path: "/outings/o1/rsvp", body: { answer: "y", markBusy: true } }]);
   });
 
+  it("marks busy right away when ticked after already saying yes", async () => {
+    await open({ ...crew, outings: [outing] });
+    fireEvent.click(screen.getByLabelText("Mark busy in my week when I say yes"));
+    expect(await sent(0)).toEqual([]);
+    cleanup();
+    await open({ ...crew, meId: "b", outings: [outing] });
+    fireEvent.click(screen.getByLabelText("Mark busy in my week when I say yes"));
+    expect(await sent(1)).toEqual([{ path: "/outings/o1/rsvp", body: { answer: "y", markBusy: true } }]);
+  });
+
   it("lets the owner delete a plan", async () => {
     vi.stubGlobal("confirm", () => true);
     await open({ ...crew, outings: [outing] });
