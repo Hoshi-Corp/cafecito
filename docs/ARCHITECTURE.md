@@ -39,7 +39,7 @@ src/app/join/[token]      join screen
 src/app/sign-in, [token]  where a personal link (`/sign-in#token`) or an emailed one (`/sign-in/token`) lands
 src/components/GroupApp   screens: typical week, dates, group heatmap, best times
 src/components/Outings   propose a best time, the plans list, RSVP
-src/components/Wishlist  the wishlist: add, edit, vote, mark visited, remove
+src/components/Wishlist  the wishlist: add, edit, vote, rate, comment, mark visited, remove
 src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
 src/components/Account    my account: recovery email, devices, export, delete
 src/components/Manage     owner: invite links, remove people
@@ -73,6 +73,8 @@ outing(id, group_id, title, place, start_q, end_q, created_by)                 -
 rsvp(outing_id, member_id, answer)                                             -- answer: y | m | n; deleted with the outing or the member
 place(id, group_id, name, link, map_link, notes, suggested_by, been_there, created_at)  -- suggested_by is set to null when that member leaves
 place_vote(place_id, member_id)                                                -- one per member and place; deleted with the place or the member
+place_rating(place_id, member_id, stars)                                       -- 1 to 5, one per member and place; deleted with the place or the member
+place_comment(id, place_id, member_id, body, created_at)                       -- deleted with the place or the member
 ```
 
 A write to overrides rewrites only the ranges around the change, merging equal neighbours. A daily prune deletes overrides and plans that ended more than a week ago, sessions unused for 180 days and expired sign-in links.
@@ -105,6 +107,9 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `POST /api/groups/:id/places` | Add a café or restaurant to the wishlist (name, optional website and map link, notes; http(s) links only; up to 100 places per group); the places come with `GET /api/groups/:id` |
 | `PATCH /api/groups/:id/places/:placeId` | Edit the details (whoever suggested it, or the owner), or mark it as visited (anyone in the group) |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/vote` | Add or take back my own "I want to go" vote |
+| `PUT`, `DELETE /api/groups/:id/places/:placeId/rating` | Set my star rating (1 to 5, replacing the earlier one) or take it back |
+| `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters, 300 comments per group) |
+| `DELETE /api/groups/:id/places/:placeId/comments/:commentId` | Delete a comment (whoever wrote it, or the owner) |
 | `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes go with it |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 

@@ -55,14 +55,20 @@ export function exportMe(db: Db, memberId: string) {
        WHERE o.created_by = @m OR r.member_id = @m ORDER BY o.start_q`,
     )
     .all({ m: memberId }) as { title: string; place: string; s: number; e: number; proposedByMe: number; answer: string | null }[];
+  const mine = `p.suggested_by = @m OR EXISTS (SELECT 1 FROM place_vote v WHERE v.place_id = p.id AND v.member_id = @m)
+    OR EXISTS (SELECT 1 FROM place_rating r WHERE r.place_id = p.id AND r.member_id = @m)
+    OR EXISTS (SELECT 1 FROM place_comment c WHERE c.place_id = p.id AND c.member_id = @m)`;
   const places = db
     .prepare(
-      `SELECT p.name, p.link, p.map_link mapLink, p.notes, p.been_there beenThere, p.suggested_by = @m suggestedByMe,
-              EXISTS (SELECT 1 FROM place_vote v WHERE v.place_id = p.id AND v.member_id = @m) votedByMe
-       FROM place p WHERE p.suggested_by = @m OR EXISTS (SELECT 1 FROM place_vote v WHERE v.place_id = p.id AND v.member_id = @m)
-       ORDER BY p.created_at, p.rowid`,
+      `SELECT p.id, p.name, p.link, p.map_link mapLink, p.notes, p.been_there beenThere, p.suggested_by = @m suggestedByMe,
+              EXISTS (SELECT 1 FROM place_vote v WHERE v.place_id = p.id AND v.member_id = @m) votedByMe,
+              (SELECT stars FROM place_rating r WHERE r.place_id = p.id AND r.member_id = @m) myStars
+       FROM place p WHERE ${mine} ORDER BY p.created_at, p.rowid`,
     )
-    .all({ m: memberId }) as { name: string; link: string; mapLink: string; notes: string; beenThere: number; suggestedByMe: number | null; votedByMe: number }[];
+    .all({ m: memberId }) as { id: string; name: string; link: string; mapLink: string; notes: string; beenThere: number; suggestedByMe: number | null; votedByMe: number; myStars: number | null }[];
+  const comments = db
+    .prepare(`SELECT place_id id, body, created_at createdAt FROM place_comment WHERE member_id = ? ORDER BY created_at, rowid`)
+    .all(memberId) as { id: string; body: string; createdAt: number }[];
   return {
     exportedAt: new Date().toISOString(),
     ...me,
@@ -86,8 +92,10 @@ export function exportMe(db: Db, memberId: string) {
       beenThere: p.beenThere === 1,
       suggestedByMe: p.suggestedByMe === 1,
       votedByMe: p.votedByMe === 1,
+      myStars: p.myStars,
+      myComments: comments.filter((c) => c.id === p.id).map((c) => ({ at: iso(c.createdAt), text: c.body })),
     })),
-    placesFormat: "wishlist places I suggested or voted for",
+    placesFormat: "wishlist places I suggested, voted for, rated or commented on; myStars 1 to 5 or null",
     devices: sessions.map((s) => ({ device: s.device, signedIn: iso(s.created_at), lastUsed: iso(s.last_seen) })),
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { addPlace, editPlace, removePlace, setBeenThere, votePlace } from "@/lib/store";
+import { addComment, addPlace, editPlace, ratePlace, removeComment, removePlace, setBeenThere, votePlace } from "@/lib/store";
 import type { Group, Place } from "@/lib/types";
 
 const field = "rounded-md border border-line bg-cell px-2 py-1";
@@ -92,12 +92,83 @@ function PlaceRow({ place: p, group }: { place: Place; group: Group }) {
         </label>
         <span className="text-muted">Suggested by {suggester ? suggester.name.trim() || "Unnamed" : "someone who left"}</span>
       </div>
+      <Rating place={p} meId={group.meId} run={run} />
+      <Comments place={p} group={group} run={run} />
       {error && (
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}
     </li>
+  );
+}
+
+/** Five stars of my own; pressing the star that is already mine takes the rating back. */
+function Rating({ place: p, meId, run }: { place: Place; meId: string; run: (write: Promise<string | null>) => void }) {
+  const mine = p.ratings[meId] ?? 0;
+  const all = Object.values(p.ratings);
+  const average = all.length ? (all.reduce((a, b) => a + b, 0) / all.length).toFixed(1) : null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs" role="group" aria-label={`Your rating of ${p.name}`}>
+      <span className="flex">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            aria-label={`${n} ${n === 1 ? "star" : "stars"}`}
+            aria-pressed={n === mine}
+            onClick={() => run(ratePlace(p.id, n === mine ? null : n))}
+            className={`px-0.5 text-base leading-none ${n <= mine ? "text-maybe" : "text-line"}`}
+          >
+            ★
+          </button>
+        ))}
+      </span>
+      <span className="text-muted">{average ? `${average} from ${all.length} ${all.length === 1 ? "rating" : "ratings"}` : "No ratings yet"}</span>
+    </div>
+  );
+}
+
+function Comments({ place: p, group, run }: { place: Place; group: Group; run: (write: Promise<string | null>) => void }) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-muted">Comments · {p.comments.length}</summary>
+      <ul className="mt-1 flex flex-col gap-1">
+        {p.comments.map((c) => {
+          const author = group.members.find((m) => m.id === c.memberId);
+          return (
+            <li key={c.id} className="flex items-baseline justify-between gap-2">
+              <span>
+                <span className="font-medium">{author ? author.name.trim() || "Unnamed" : "Someone"}</span>: {c.body}
+              </span>
+              {(c.memberId === group.meId || group.ownerId === group.meId) && (
+                <button aria-label={`Delete comment by ${author?.name.trim() || "Unnamed"}`} className="text-muted underline" onClick={() => run(removeComment(p.id, c.id))}>
+                  Delete
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <form
+        className="mt-1 flex gap-1"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (sending || !text.trim()) return;
+          setSending(true);
+          const refused = await addComment(p.id, text.trim());
+          setSending(false);
+          if (!refused) setText("");
+          run(Promise.resolve(refused));
+        }}
+      >
+        <input aria-label={`Comment on ${p.name}`} className={`${field} min-w-0 flex-1`} value={text} maxLength={500} onChange={(e) => setText(e.target.value)} />
+        <button disabled={sending} className="rounded-md border border-line px-2 py-1 disabled:opacity-50">
+          Comment
+        </button>
+      </form>
+    </details>
   );
 }
 
@@ -169,12 +240,22 @@ function PlaceForm({
 const EMPTY: Fields = { name: "", link: "", mapLink: "", notes: "" };
 
 function AddPlace() {
-  // A new key after each add empties the form again.
-  const [added, setAdded] = useState(0);
+  // A new key empties the form: after each add, and when it is cancelled (which also closes the panel).
+  const [round, setRound] = useState(0);
+  const [open, setOpen] = useState(false);
   return (
-    <details className="mt-3 text-sm">
+    <details className="mt-3 text-sm" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="cursor-pointer font-medium">Add a place</summary>
-      <PlaceForm key={added} initial={EMPTY} submitLabel="Add" onSubmit={addPlace} onDone={(saved) => setAdded(added + (saved ? 1 : 0))} />
+      <PlaceForm
+        key={round}
+        initial={EMPTY}
+        submitLabel="Add"
+        onSubmit={addPlace}
+        onDone={(saved) => {
+          setRound(round + 1);
+          if (!saved) setOpen(false);
+        }}
+      />
     </details>
   );
 }
