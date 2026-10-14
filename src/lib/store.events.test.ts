@@ -113,3 +113,21 @@ it("stops retrying the live stream after a few refusals", async () => {
   }
   expect(gets).toBe(3); // the first load plus two retries, then it gives up
 });
+
+it("loads the group after a saved plan write only when the live stream is not connected", async () => {
+  vi.resetModules();
+  vi.stubGlobal("EventSource", FakeSource);
+  let gets = 0;
+  vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
+    if (!init?.method) gets++;
+    return { ok: true, status: 200, json: async () => group };
+  });
+  const store = await import("./store");
+  await store.retryLoad();
+  expect(await store.removeOuting("o")).toBeNull();
+  expect(gets).toBe(2); // stream not open yet: the write loads the group itself
+
+  FakeSource.last.onopen!();
+  expect(await store.removeOuting("o")).toBeNull();
+  expect(gets).toBe(2); // stream open: the server's reload event does it
+});
