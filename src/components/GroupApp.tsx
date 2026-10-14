@@ -235,7 +235,7 @@ function GroupView({ group }: { group: Group }) {
       </ul>
 
       <BestWindows windows={windows} total={active.length} zone={zone} onPick={showWindow} onPropose={setProposing} />
-      {proposing && <ProposeForm key={proposing.startQ} window={proposing} zone={zone} onDone={() => setProposing(null)} />}
+      {proposing && <ProposeForm key={proposing.startQ} window={proposing} places={group.places ?? []} zone={zone} onDone={() => setProposing(null)} />}
       <Outings group={group} zone={zone} now={now} />
       <Wishlist group={group} />
       {waiting.length > 0 && (

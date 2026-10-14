@@ -197,7 +197,7 @@ async function listWrite(...args: Parameters<typeof send>) {
   return error;
 }
 
-export const proposeOuting = (outing: { title: string; place: string; startQ: number; endQ: number }) =>
+export const proposeOuting = (outing: { title: string; place: string; placeId?: string; startQ: number; endQ: number }) =>
   listWrite("/outings", "POST", outing);
 
 export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>

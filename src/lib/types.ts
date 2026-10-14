@@ -64,6 +64,8 @@ export interface Outing {
   id: string;
   title: string;
   place: string;
+  /** The wishlist place it points at, or null (none picked, or that place was deleted). */
+  placeId: string | null;
   startQ: number;
   endQ: number;
   /** Who proposed it; null once they left the group. */
