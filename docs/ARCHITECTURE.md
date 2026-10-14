@@ -39,6 +39,7 @@ src/app/join/[token]      join screen
 src/app/sign-in, [token]  where a personal link (`/sign-in#token`) or an emailed one (`/sign-in/token`) lands
 src/components/GroupApp   screens: typical week, dates, group heatmap, best times
 src/components/Outings   propose a best time, the plans list, RSVP
+src/components/Wishlist  the wishlist: add a place, vote, mark visited, remove
 src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
 src/components/Account    my account: recovery email, devices, export, delete
 src/components/Manage     owner: invite links, remove people

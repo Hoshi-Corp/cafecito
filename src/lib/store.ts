@@ -189,18 +189,26 @@ export function updateMember(id: string, change: (member: Member) => Member) {
   if (Object.keys(setMarks).length || remove.length) send("/me/overrides", "PATCH", { set: setMarks, remove });
 }
 
-// Outings are not painted optimistically. The server's reload event brings the new list to every browser; with the live
-// stream down (say a proxy blocks it) a saved write loads the group itself. Each resolves to an error message to show, or null.
-async function outingWrite(...args: Parameters<typeof send>) {
+// Plans and the wishlist are not painted optimistically. The server's reload event brings the new list to every browser; with
+// the live stream down (say a proxy blocks it) a saved write loads the group itself. Each resolves to an error message to show, or null.
+async function listWrite(...args: Parameters<typeof send>) {
   const error = await send(...args);
   if (!error && !connected) await load();
   return error;
 }
 
 export const proposeOuting = (outing: { title: string; place: string; startQ: number; endQ: number }) =>
-  outingWrite("/outings", "POST", outing);
+  listWrite("/outings", "POST", outing);
 
 export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>
-  outingWrite(`/outings/${id}/rsvp`, "PUT", { answer, markBusy });
+  listWrite(`/outings/${id}/rsvp`, "PUT", { answer, markBusy });
 
-export const removeOuting = (id: string) => outingWrite(`/outings/${id}`, "DELETE");
+export const removeOuting = (id: string) => listWrite(`/outings/${id}`, "DELETE");
+
+export const addPlace = (place: { name: string; link: string; mapLink: string; notes: string }) => listWrite("/places", "POST", place);
+
+export const votePlace = (id: string, on: boolean) => listWrite(`/places/${id}/vote`, on ? "PUT" : "DELETE");
+
+export const setBeenThere = (id: string, beenThere: boolean) => listWrite(`/places/${id}`, "PATCH", { beenThere });
+
+export const removePlace = (id: string) => listWrite(`/places/${id}`, "DELETE");

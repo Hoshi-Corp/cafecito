@@ -404,3 +404,74 @@ describe("outings", () => {
   });
 });
 
+describe("wishlist", () => {
+  const place = { id: "p1", name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "b", beenThere: false, votes: ["c"] };
+  const visited = { ...place, id: "p2", name: "Old Haunt", link: "", mapLink: "", notes: "", suggestedBy: null, beenThere: true, votes: ["a", "b", "c"] };
+  const wanted = { ...place, id: "p3", name: "Wanted", link: "", mapLink: "", notes: "", votes: ["a", "b"] };
+
+  it("lists places to try first, the most wanted before the rest, with links, notes and who suggested them", async () => {
+    await open({ ...crew, places: [visited, place, wanted] });
+    const names = screen.getAllByRole("listitem").map((li) => li.querySelector(".font-medium")?.textContent).filter((n) => ["Café X", "Old Haunt", "Wanted"].includes(n ?? ""));
+    expect(names).toEqual(["Wanted", "Café X", "Old Haunt"]);
+    const link = screen.getByRole("link", { name: "Café X" });
+    expect(link.getAttribute("href")).toBe("https://x.example");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(screen.getByRole("link", { name: "Map" }).getAttribute("href")).toBe("https://maps.example/x");
+    expect(screen.getByText("Great pastries")).toBeTruthy();
+    expect(screen.getByText("Suggested by someone who left")).toBeTruthy();
+    expect(screen.getAllByText("Suggested by Ben")).toHaveLength(2);
+  });
+
+  it("adds a place", async () => {
+    await open();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Café Y " } });
+    fireEvent.change(screen.getByLabelText("Website (optional)"), { target: { value: "https://y.example" } });
+    fireEvent.change(screen.getByLabelText("Notes (optional)"), { target: { value: "Quiet" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await sent(1)).toEqual([{ path: "/places", body: { name: "Café Y", link: "https://y.example", mapLink: "", notes: "Quiet" } }]);
+    await vi.waitFor(() => expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(""));
+  });
+
+  it("sends once however often Add is pressed, and shows why a place was refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await open();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Café Y" } });
+    const form = screen.getByLabelText("Name").closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(await sent(1)).toHaveLength(1);
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? { ok: false, status: 400, json: async () => ({ error: "Links must start with http:// or https://" }) }
+        : { ok: true, json: async () => crew },
+    );
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Café Z" } });
+    fireEvent.submit(form);
+    expect((await screen.findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Café Z");
+  });
+
+  it("votes, takes the vote back, and marks a place as visited", async () => {
+    await open({ ...crew, places: [{ ...place, votes: ["a"] }, { ...wanted, votes: [] }] });
+    fireEvent.click(screen.getByRole("button", { name: "I want to go · 0" }));
+    fireEvent.click(screen.getByRole("button", { name: "I want to go · 1" }));
+    fireEvent.click(screen.getAllByLabelText("Been there")[0]);
+    expect(await sent(3)).toEqual([
+      { path: "/places/p3/vote", body: null },
+      { path: "/places/p1/vote", body: null },
+      { path: "/places/p1", body: { beenThere: true } },
+    ]);
+  });
+
+  it("offers Remove only to whoever suggested a place, or the owner", async () => {
+    await open({ ...crew, meId: "c", places: [place, { ...wanted, suggestedBy: "c" }] });
+    expect(screen.queryByRole("button", { name: "Remove Café X" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove Wanted" })).toBeTruthy(); // the one Chie suggested
+    cleanup();
+    vi.stubGlobal("confirm", () => true);
+    await open({ ...crew, places: [place] }); // Ana owns the group
+    fireEvent.click(screen.getByRole("button", { name: "Remove Café X" }));
+    expect(await sent(1)).toEqual([{ path: "/places/p1", body: null }]);
+  });
+});
+

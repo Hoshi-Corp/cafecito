@@ -28,6 +28,7 @@ import { Account } from "./Account";
 import { ColorPicker, Landing } from "./Entry";
 import { Manage } from "./Manage";
 import { Outings, ProposeForm } from "./Outings";
+import { Wishlist } from "./Wishlist";
 import { WeekGrid, type CellRange, type GridColumn, type GridRow } from "./WeekGrid";
 
 type Tab = "group" | "mine" | "typical";
@@ -236,6 +237,7 @@ function GroupView({ group }: { group: Group }) {
       <BestWindows windows={windows} total={active.length} zone={zone} onPick={showWindow} onPropose={setProposing} />
       {proposing && <ProposeForm key={proposing.startQ} window={proposing} zone={zone} onDone={() => setProposing(null)} />}
       <Outings group={group} zone={zone} now={now} />
+      <Wishlist group={group} />
       {waiting.length > 0 && (
         <p className="-mt-2 text-xs text-muted">
           Not counted yet, nothing marked: {waiting.map(nameOf).join(", ")}.
