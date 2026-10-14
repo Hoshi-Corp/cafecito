@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 /** A browser that can do push. `permission` is what the person answers when asked. */
-function browser(permission: NotificationPermission, subscribed = false) {
+function browser(permission: NotificationPermission, subscribed = false, saves = true) {
   const calls: string[] = [];
   const subscription = { toJSON: () => ({ endpoint: "https://push.example/1", keys: { p256dh: "a", auth: "b" } }), unsubscribe: vi.fn(async () => true) };
   const pushManager = { subscribe: vi.fn(async () => subscription), getSubscription: async () => subscription };
@@ -23,7 +23,7 @@ function browser(permission: NotificationPermission, subscribed = false) {
   vi.stubGlobal("Notification", { permission: "default", requestPermission: async () => permission });
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push(`${init?.method ?? "GET"} ${url}`);
-    return { ok: true, json: async () => ({ publicKey: "BPkey_-", subscribed }) };
+    return { ok: init?.method === "PUT" ? saves : true, json: async () => ({ publicKey: "BPkey_-", subscribed }) };
   });
   return { calls, pushManager, subscription };
 }
@@ -56,6 +56,16 @@ it("subscribes this device when the switch is turned on, and unsubscribes when i
   await waitFor(() => expect(box.checked).toBe(false));
   expect(subscription.unsubscribe).toHaveBeenCalled();
   expect(calls).toContain("DELETE /api/groups/me/me/push");
+});
+
+it("gives the browser's subscription back when the server could not save it", async () => {
+  const { subscription } = browser("granted", false, false);
+  render(<Notifications />);
+  const box = (await screen.findByRole("checkbox")) as HTMLInputElement;
+  fireEvent.click(box);
+  expect((await screen.findByRole("status")).textContent).toMatch(/Could not turn notifications on/);
+  expect(subscription.unsubscribe).toHaveBeenCalled();
+  expect(box.checked).toBe(false);
 });
 
 it("says so up front when notifications were already blocked", async () => {

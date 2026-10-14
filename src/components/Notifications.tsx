@@ -41,8 +41,11 @@ export function Notifications() {
     if ((await Notification.requestPermission()) !== "granted") return setNote(BLOCKED);
     const registration = await navigator.serviceWorker.register("/sw.js");
     const sub = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(state.publicKey) });
-    const res = await call("/me/push", "PUT", sub.toJSON());
-    if (!res.ok) return setNote("Could not turn notifications on.");
+    const res = await call("/me/push", "PUT", sub.toJSON()).catch(() => null);
+    if (!res?.ok) {
+      await sub.unsubscribe(); // the server never heard of it, so do not leave the browser holding one
+      return setNote("Could not turn notifications on.");
+    }
     setState({ ...state, subscribed: true });
   };
 
