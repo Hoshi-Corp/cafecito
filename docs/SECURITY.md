@@ -1,6 +1,6 @@
 # Cafecito: security review of auth and write paths
 
-Audience: contributors and people running an instance. Reviewed for the 1.0 release on 2026-10-11, against the 1.0 code. Re-review when a route, the session model or the schema changes.
+Audience: contributors and people running an instance. Reviewed for the 1.0 release on 2026-10-11, against the 1.0 code; the 1.1 additions (plans and the wishlist) were reviewed as they were built, see the "Plans" and "Wishlist" rows. Re-review when a route, the session model or the schema changes.
 
 ## Threat model
 
@@ -27,7 +27,7 @@ A small group of friends on a self-hosted instance. In scope: someone on the int
 | Wishlist (places) | The member and group come from the cookie; a place is looked up by id and the session's group, so another group's place cannot be voted on, edited or deleted. A vote is always the caller's own row. Details: the suggester or the owner; "been there": any member. Links must parse as `http:` or `https:`, so a `javascript:` or `data:` link can never become a clickable `href`, and they are stored as parsed (so `http:cafe.example` becomes `http://cafe.example/`, not a relative link); they are only shown as text or `rel="noopener"` links to people already in the group. Name, notes and links have length limits; at most 100 places per group. Ratings (1 to 5) and comments (up to 500 characters, 300 per group) are the caller's own rows; a comment is deleted by its author or the owner, looked up by place and group. Comments render as plain text. | OK |
 | Secrets in the repo | None. The demo tokens are public by design and only exist with `CAFECITO_DEMO=1`. | OK |
 
-Tests for these rules: `src/server/groups.test.ts`, `account.test.ts`, `outings.test.ts` and `routes.test.ts`.
+Tests for these rules: `src/server/groups.test.ts`, `account.test.ts`, `outings.test.ts`, `places.test.ts` and `routes.test.ts`.
 
 ## Known limits
 

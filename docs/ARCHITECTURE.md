@@ -69,7 +69,7 @@ override(member_id, start_q, end_q, mark)                                      -
 invite(id, token_hash, group_id, expires_at, max_uses, uses, revoked_at)
 session(token_hash, member_id, device, created_at, last_seen)                  -- deleted with the member
 sign_in_link(token_hash, member_id, expires_at)                                -- single use, 30 minutes
-outing(id, group_id, title, place, place_id, start_q, end_q, created_by)        -- created_by is set to null when that member leaves; place_id (wishlist place) when it is deleted; `place` text stays
+outing(id, group_id, title, place, place_id, start_q, end_q, created_by)        -- created_by is set to null when that member leaves; place_id is set to null when that wishlist place is deleted, and the `place` text stays
 rsvp(outing_id, member_id, answer)                                             -- answer: y | m | n; deleted with the outing or the member
 place(id, group_id, name, link, map_link, notes, suggested_by, been_there, created_at)  -- suggested_by is set to null when that member leaves
 place_vote(place_id, member_id)                                                -- one per member and place; deleted with the place or the member
@@ -110,7 +110,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/rating` | Set my star rating (1 to 5, replacing the earlier one) or take it back |
 | `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters, 300 comments per group) |
 | `DELETE /api/groups/:id/places/:placeId/comments/:commentId` | Delete a comment (whoever wrote it, or the owner) |
-| `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes go with it |
+| `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes, ratings and comments go with it |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
 Writes are **per member and own-rows-only**. No call replaces the whole group. The owner can also act on other members (remove them, replace their personal link), and deleting a plan adds one more: it clears its proposer's override marks for that plan's time (`deleteOuting`), so when the owner deletes someone else's plan, that member's availability changes. It only removes marks, never sets any.

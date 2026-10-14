@@ -2,9 +2,18 @@
 
 import { useState } from "react";
 import { addComment, addPlace, editPlace, ratePlace, removeComment, removePlace, setBeenThere, votePlace } from "@/lib/store";
-import type { Group, Place } from "@/lib/types";
+import type { Group, Place, PlaceFields } from "@/lib/types";
 
 const field = "rounded-md border border-line bg-cell px-2 py-1";
+
+/** A member's display name, or null when they are not in the group (any more). */
+const nameOf = (group: Group, id: string | null) => {
+  const m = group.members.find((m) => m.id === id);
+  return m ? m.name.trim() || "Unnamed" : null;
+};
+
+/** Whoever wrote or suggested something, and the owner, may change it. */
+const mayChange = (group: Group, authorId: string | null) => authorId === group.meId || group.ownerId === group.meId;
 
 // Places still to try first, then the most wanted, then the oldest.
 const order = (a: Place, b: Place) => Number(a.beenThere) - Number(b.beenThere) || b.votes.length - a.votes.length;
@@ -33,8 +42,7 @@ function PlaceRow({ place: p, group }: { place: Place; group: Group }) {
   const [editing, setEditing] = useState(false);
   const run = (write: Promise<string | null>) => write.then(setError);
   const voted = p.votes.includes(group.meId);
-  const suggester = group.members.find((m) => m.id === p.suggestedBy);
-  const canEdit = p.suggestedBy === group.meId || group.ownerId === group.meId;
+  const canEdit = mayChange(group, p.suggestedBy);
   if (editing)
     return (
       <li className="text-sm">
@@ -90,7 +98,7 @@ function PlaceRow({ place: p, group }: { place: Place; group: Group }) {
           <input type="checkbox" checked={p.beenThere} onChange={(e) => run(setBeenThere(p.id, e.target.checked))} />
           Been there
         </label>
-        <span className="text-muted">Suggested by {suggester ? suggester.name.trim() || "Unnamed" : "someone who left"}</span>
+        <span className="text-muted">Suggested by {nameOf(group, p.suggestedBy) ?? "someone who left"}</span>
       </div>
       <Rating place={p} meId={group.meId} run={run} />
       <Comments place={p} group={group} run={run} />
@@ -136,14 +144,14 @@ function Comments({ place: p, group, run }: { place: Place; group: Group; run: (
       <summary className="cursor-pointer text-muted">Comments · {p.comments.length}</summary>
       <ul className="mt-1 flex flex-col gap-1">
         {p.comments.map((c) => {
-          const author = group.members.find((m) => m.id === c.memberId);
+          const author = nameOf(group, c.memberId);
           return (
             <li key={c.id} className="flex items-baseline justify-between gap-2">
               <span>
-                <span className="font-medium">{author ? author.name.trim() || "Unnamed" : "Someone"}</span>: {c.body}
+                <span className="font-medium">{author ?? "Someone"}</span>: {c.body}
               </span>
-              {(c.memberId === group.meId || group.ownerId === group.meId) && (
-                <button aria-label={`Delete comment by ${author?.name.trim() || "Unnamed"}`} className="text-muted underline" onClick={() => run(removeComment(p.id, c.id))}>
+              {mayChange(group, c.memberId) && (
+                <button aria-label={`Delete comment by ${author ?? "someone"}`} className="text-muted underline" onClick={() => run(removeComment(p.id, c.id))}>
                   Delete
                 </button>
               )}
@@ -172,8 +180,6 @@ function Comments({ place: p, group, run }: { place: Place; group: Group; run: (
   );
 }
 
-type Fields = { name: string; link: string; mapLink: string; notes: string };
-
 /** The place fields with a Save button; `onSubmit` resolves to the server's refusal, or null once saved. */
 function PlaceForm({
   initial,
@@ -181,15 +187,15 @@ function PlaceForm({
   onSubmit,
   onDone,
 }: {
-  initial: Fields;
+  initial: PlaceFields;
   submitLabel: string;
-  onSubmit: (values: Fields) => Promise<string | null>;
+  onSubmit: (values: PlaceFields) => Promise<string | null>;
   onDone: (saved: boolean) => void;
 }) {
   const [values, setValues] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const input = (key: keyof Fields) => ({ value: values[key], onChange: (e: { target: { value: string } }) => setValues({ ...values, [key]: e.target.value }) });
+  const input = (key: keyof PlaceFields) => ({ value: values[key], onChange: (e: { target: { value: string } }) => setValues({ ...values, [key]: e.target.value }) });
   return (
     <form
       className="mt-2 flex flex-col gap-2"
@@ -237,7 +243,7 @@ function PlaceForm({
   );
 }
 
-const EMPTY: Fields = { name: "", link: "", mapLink: "", notes: "" };
+const EMPTY: PlaceFields = { name: "", link: "", mapLink: "", notes: "" };
 
 function AddPlace() {
   // A new key empties the form: after each add, and when it is cancelled (which also closes the panel).
@@ -268,7 +274,7 @@ function EditPlace({ place: p, onDone }: { place: Place; onDone: () => void }) {
       initial={initial}
       submitLabel="Save"
       onSubmit={async (values) => {
-        const changed = Object.fromEntries(Object.entries(values).filter(([k, v]) => v !== initial[k as keyof Fields]));
+        const changed = Object.fromEntries(Object.entries(values).filter(([k, v]) => v !== initial[k as keyof PlaceFields]));
         return Object.keys(changed).length ? editPlace(p.id, changed) : null;
       }}
       onDone={onDone}

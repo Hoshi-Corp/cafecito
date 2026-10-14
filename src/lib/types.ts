@@ -74,6 +74,14 @@ export interface Outing {
   rsvps: Record<string, Rsvp>;
 }
 
+/** What a person types for a place. */
+export interface PlaceFields {
+  name: string;
+  link: string;
+  mapLink: string;
+  notes: string;
+}
+
 /** A café or restaurant on the group's wishlist. */
 export interface Place {
   id: string;
