@@ -91,6 +91,6 @@ docker compose up -d
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md): concepts, rules, data model, target design.
-- [Roadmap](docs/ROADMAP.md): releases 0.2 to 1.0 and possible future releases.
+- [Roadmap](docs/ROADMAP.md): releases 0.2 to 1.0, the next minor release (1.1) and possible future releases.
 - [Deployment guide](docs/DEPLOY.md): install with HTTPS, email, backups, upgrades and upgrade notes.
 - [Security](docs/SECURITY.md): review of auth and write paths, known limits, how to report a problem.
