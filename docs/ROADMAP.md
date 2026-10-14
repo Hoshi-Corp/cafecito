@@ -1,6 +1,6 @@
 # Cafecito: roadmap
 
-Status as of 2026-10-13. Release dates appear only once a release has shipped (see the table in the [README](../README.md)); each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
+Status as of 2026-10-14. Release dates appear only once a release has shipped (see the table in the [README](../README.md)); each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
 
 ## Released
 
@@ -62,21 +62,34 @@ Exit: lose every device, open the saved link on a new one, and be back in the gr
 ## Next minor release
 
 ### 1.1 Events, notifications, wishlist and multiple groups
-Brings together four features from the earlier plan. Ship order inside the release is open; the wishlist's event link and the notifications depend on events, so events come first.
+Brings together four features from the earlier plan. Events and the wishlist are built and on `main`; notifications and multiple groups are not started. Ship order inside the release is open; notifications depend on events, which are done. Upgrading from 1.0.x runs migrations 5 to 10 on first start (all additive, one table is rebuilt with its rows copied); take the backup first, see [DEPLOY](DEPLOY.md#upgrade-notes).
 
-#### Turn a slot into an event
-Pick a best window, propose it with a title and place; members RSVP yes/maybe/no. A "yes" can auto-mark that time as busy for that person. Gives the calendar an outcome instead of just a view.
+#### Turn a slot into an event: built
+- ✅ **Propose** a best time from the group screen with a title and place. It must lie inside a window where the group is free, last at most 4 hours, and a group holds up to 50 plans. The proposer counts as yes and their time turns busy.
+- ✅ **RSVP** yes, maybe or no. "Mark busy in my week when I say yes" is a checkbox on each plan.
+- ✅ **Delete** by whoever proposed it or the owner; that clears the proposer's marks for the plan's time (including hand-made ones, a documented limit). Plans that ended over a week ago are pruned daily.
+- ✅ "Export my data" lists the plans I proposed or answered.
+- Not built: changing the title, place or time of a plan after proposing it.
 
-#### Notifications
-"A new window where everyone is free appeared", "Camille proposed Saturday 10:00", weekly reminder to refresh your week. Web push first; email only if SMTP exists. Every notification type individually mutable.
+#### Notifications: not started
+"A new window where everyone is free appeared", "Camille proposed Saturday 10:00", weekly reminder to refresh your week. Web push first; email only if SMTP exists. Every notification type individually mutable. Needs a design decision first: push keys (VAPID), a service worker, where subscriptions are stored.
 
-#### Café and restaurant wishlist
-A shared list per group: name, link, notes, who suggested it, votes, "been there" flag. Optionally attach a place to an event. Support for optional link to the map. List of restaurants is kept. Members can score (1-5 stars) the restaurant and add comments.
+#### Café and restaurant wishlist: built
+- ✅ **A shared list per group**: name, website, map link, notes, who suggested it, "been there" flag, and "I want to go" votes. Links must be `http(s)`. Up to 100 places on the list.
+- ✅ **Edit** a place (whoever suggested it, or the owner); anyone can mark it visited.
+- ✅ **Score** from 1 to 5 stars (your own, replaceable) with the average shown, and **comments** (up to 500 characters; 300 on the list per group).
+- ✅ **Attach a place to a plan** when proposing: the plan links to the place's website or map.
+- ✅ **The list is kept**: removing a place hides it and keeps its votes, ratings and comments in the database; a member who leaves keeps their comments, shown as "Deleted user" (their votes and ratings go with them).
+- ✅ Export and account deletion cover the wishlist; "Delete my account" and the owner's "Remove member" say what stays behind.
+- Not built: a screen to see or restore removed places, attaching or changing a place on an existing plan, sorting by rating.
 
-#### Multiple groups per person
+#### Multiple groups per person: not started
 One account in several groups (climbing friends, old coworkers) with a group switcher, and a personal typical week that can be shared across groups or set per group.
 - **Create a new group while signed in.** Today "Create group" only appears to a browser with no session, so starting a second group means a private window and a separate identity. Add it to the group switcher: the creator becomes owner of the new group with the same account, and can carry over their typical week.
 - Joining by invite link while signed in adds the group to the same account instead of starting a new one.
+- Needs a model change: a session belongs to one member in one group today, so an account (`user`) table comes first.
+
+Exit for 1.1: all four parts built; the screens tried in a real browser and on a phone (**not done yet for plans and the wishlist**: they are covered by tests and by calls to the running server, not by a person using them); a second device and a real upgrade from a 1.0.x data file tried by someone other than the author.
 
 ## Possible future releases
 
