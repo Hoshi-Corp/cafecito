@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
-import { signOutOthers } from "./account";
+import { exportMe, signOutOthers } from "./account";
 import { HttpError, hash, removeMember, startSession } from "./groups";
 import { MAX_DEVICES, publicKey, pushState, subscribePush, unsubscribePush } from "./push";
 import { seed } from "./seed";
@@ -75,6 +75,17 @@ describe("push subscriptions", () => {
     subscribePush(db, "you", device(db, "you", "a"), sub(1));
     subscribePush(db, "camille", device(db, "camille", "c"), sub(1));
     expect(db.prepare(`SELECT member_id m FROM push_subscription`).all()).toEqual([{ m: "camille" }]);
+  });
+
+  it("shows in my export as a count, never as the push address", () => {
+    const db = fresh();
+    expect(exportMe(db, "you").notificationDevices).toBe(0);
+    subscribePush(db, "you", device(db, "you", "a"), sub(1));
+    subscribePush(db, "you", device(db, "you", "b"), sub(2));
+    subscribePush(db, "camille", device(db, "camille", "c"), sub(3));
+    const data = exportMe(db, "you");
+    expect(data.notificationDevices).toBe(2);
+    expect(JSON.stringify(data)).not.toContain("push.example");
   });
 
   it("goes with the device's sign-out and with the member", () => {

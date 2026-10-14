@@ -8,12 +8,13 @@ export const MAX_DEVICES = 5;
 
 /** The server's public VAPID key, which browsers need to subscribe. The pair is made on first use and kept in the database. */
 export function publicKey(db: Db) {
-  const row = db.prepare(`SELECT public_key FROM push_key`).get() as { public_key: string } | undefined;
-  if (row) return row.public_key;
-  const { publicKey, privateKey } = webpush.generateVAPIDKeys();
-  // OR IGNORE: if two first requests race, the first pair stays and the second asks again.
-  db.prepare(`INSERT OR IGNORE INTO push_key (id, public_key, private_key) VALUES (1, ?, ?)`).run(publicKey, privateKey);
-  return (db.prepare(`SELECT public_key FROM push_key`).get() as { public_key: string }).public_key;
+  const stored = () => (db.prepare(`SELECT public_key FROM push_key`).get() as { public_key: string } | undefined)?.public_key;
+  const existing = stored();
+  if (existing) return existing;
+  const pair = webpush.generateVAPIDKeys();
+  // OR IGNORE: if two first requests race, the first pair stays and the second reads it back.
+  db.prepare(`INSERT OR IGNORE INTO push_key (id, public_key, private_key) VALUES (1, ?, ?)`).run(pair.publicKey, pair.privateKey);
+  return stored()!;
 }
 
 /** Is this device (session) subscribed? */
@@ -37,8 +38,11 @@ export function subscribePush(db: Db, memberId: string, tokenHash: string, body:
   const keys = isObject(sub.keys) ? sub.keys : {};
   const { endpoint } = sub;
   const { p256dh, auth } = keys;
-  if (typeof endpoint !== "string" || endpoint.length > 2048 || !isHttps(endpoint)) throw new HttpError(400, "Invalid subscription");
-  if (typeof p256dh !== "string" || !BASE64URL.test(p256dh) || typeof auth !== "string" || !BASE64URL.test(auth))
+  if (
+    typeof endpoint !== "string" || endpoint.length > 2048 || !isHttps(endpoint) ||
+    typeof p256dh !== "string" || !BASE64URL.test(p256dh) ||
+    typeof auth !== "string" || !BASE64URL.test(auth)
+  )
     throw new HttpError(400, "Invalid subscription");
   db.transaction(() => {
     // The endpoint is a secret only that browser knows, so a row for it is replaced whoever held it before.

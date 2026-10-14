@@ -90,7 +90,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `POST /api/groups` | Create a group; the creator becomes owner and is signed in |
 | `GET /api/groups/:id` | Group plus every member's availability (`:id` may be `me`), my recovery email, whether email sign-in is on |
 | `PATCH /api/groups/:id` | Change the slot size (owner) |
-| `GET /api/groups/:id/me` | Export my data (a JSON file) |
+| `GET /api/groups/:id/me` | Export my data (a JSON file; notifications appear as a count of devices, never the push addresses) |
 | `PATCH /api/groups/:id/me` | Change my name, color, time zone, typical week or recovery email |
 | `DELETE /api/groups/:id/me` | Delete my account and data; plans, wishlist places and comments I wrote stay in the group without my name |
 | `PATCH /api/groups/:id/me/overrides` | Add or remove my overrides |

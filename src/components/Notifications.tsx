@@ -18,7 +18,7 @@ export function Notifications() {
 
   useEffect(() => {
     if (supported())
-      fetch("/api/groups/me/me/push")
+      call("/me/push", "GET")
         .then((res) => (res.ok ? res.json() : null))
         .then(setState)
         .catch(() => {});
