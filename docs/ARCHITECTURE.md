@@ -32,7 +32,7 @@ src/lib/availability.ts   quanta math, markAt/slotMark, summarize, bestWindows, 
 src/lib/store.ts          client store: useGroup / updateGroup / updateMember, optimistic, per-member writes, SSE listener
 src/server/               SQLite (db, schema + migrations), validated own-rows-only writes, sessions and invites (groups.ts),
                           my account: devices, export, deletion, sign-in links (account.ts), in-memory pub/sub (events.ts),
-                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), the wishlist (places.ts), which devices want notifications (push.ts), opt-in demo data (seed.ts)
+                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), the wishlist (places.ts), which devices want notifications, and sending to them (push.ts), opt-in demo data (seed.ts)
 src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, me/push, invites, members, outings, places, events),
                           invites/[token] (info, join), sign-in (+ link)
 src/app/join/[token]      join screen
@@ -134,7 +134,7 @@ Settled in the 1.1 design and built:
 - **What is sent**: the person's name and the group's name, never a plan's title, place or time, because the text passes through the browser maker's push server.
 - **A device is a session.** A subscription belongs to the session that made it, so signing out (or "Sign out other devices", or the 180-day expiry) removes it.
 - **Keys**: the VAPID pair is made on first use and kept in `push_key`, so nothing needs configuring and a backup carries it. Losing it only means every device has to turn the switch on again.
-- **Sending** (`push.ts`: `notifyProposed`, `notifyDeleted`): the `web-push` package, started by the route after it has answered (never awaited, never throws), one request per device with a 24-hour time to live, no retries; a 404 or 410 from the push service deletes that subscription, any other failure is logged by status code only (the address works as a secret). `deleteOuting` returns who had said yes, collected before their answers go with the plan. The push contact is `CAFECITO_URL` when it is HTTPS.
+- **Sending** (`push.ts`: `notifyProposed`, `notifyDeleted`): the `web-push` package, started by the route and not awaited; the lookups run first in the same step, inside the same catch, so nothing in it can fail the request, one request per device with a 24-hour time to live, no retries; a 404 or 410 from the push service deletes that subscription, any other failure is logged by status code only (the address works as a secret). `deleteOuting` returns who had said yes, collected before their answers go with the plan. The push contact is `CAFECITO_URL` when it is HTTPS.
 
 ### Auth
 

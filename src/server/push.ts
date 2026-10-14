@@ -76,17 +76,20 @@ const contact = () => (process.env.CAFECITO_URL?.startsWith("https:") ? process.
 const DAY_SECONDS = 24 * 60 * 60;
 
 /**
- * Sends to every device, at once, with no retries. A 404 or 410 means the browser dropped the subscription, so its row goes;
- * any other failure is logged by code only (the endpoint works as a secret). Never throws: a push must not fail the request that caused it.
+ * Looks up who to tell (`plan`, which may return null for nobody) and sends to every device, with no retries. A 404 or 410 means the
+ * browser dropped the subscription, so its row goes; any other failure is logged by code only (the endpoint works as a secret).
+ * Never throws, lookups included: a push must not fail the request that caused it.
+ * shortcut: all devices are sent to at once, each with a 10 second timeout (12 members x 5 devices at most); queue them if groups grow.
  */
-async function send(db: Db, targets: Target[], message: Message) {
+async function notify(db: Db, plan: () => { targets: Target[]; message: Message } | null) {
   try {
-    if (!targets.length) return;
+    const found = plan();
+    if (!found?.targets.length) return;
     publicKey(db); // makes the pair if nobody has asked for it yet
     const keys = db.prepare(`SELECT public_key, private_key FROM push_key`).get() as { public_key: string; private_key: string };
-    const payload = JSON.stringify(message);
+    const payload = JSON.stringify(found.message);
     await Promise.all(
-      targets.map(async (t) => {
+      found.targets.map(async (t) => {
         try {
           await webpush.sendNotification({ endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } }, payload, {
             TTL: DAY_SECONDS,
@@ -109,22 +112,23 @@ const names = (db: Db, memberId: string) =>
   db.prepare(`SELECT m.name, g.name "group" FROM member m JOIN "group" g ON g.id = m.group_id WHERE m.id = ?`).get(memberId) as { name: string; group: string };
 
 /** Tells everyone else in the group that this member proposed a plan. Only names, never the plan: the text passes through the browser maker's server. */
-export function notifyProposed(db: Db, groupId: string, actorId: string) {
-  const { name, group } = names(db, actorId);
-  const targets = db
-    .prepare(
-      `SELECT s.endpoint, s.p256dh, s.auth FROM push_subscription s JOIN member m ON m.id = s.member_id WHERE m.group_id = ? AND m.id != ?`,
-    )
-    .all(groupId, actorId) as Target[];
-  return send(db, targets, { title: `${name} proposed a plan`, body: group });
-}
+export const notifyProposed = (db: Db, groupId: string, actorId: string) =>
+  notify(db, () => {
+    const { name, group } = names(db, actorId);
+    const targets = db
+      .prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subscription s JOIN member m ON m.id = s.member_id WHERE m.group_id = ? AND m.id != ?`)
+      .all(groupId, actorId) as Target[];
+    return { targets, message: { title: `${name} proposed a plan`, body: group } };
+  });
 
 /** Tells the members who said yes (not the one deleting) that the plan is gone. */
-export function notifyDeleted(db: Db, actorId: string, wentMemberIds: string[]) {
-  const ids = wentMemberIds.filter((id) => id !== actorId);
-  const { name, group } = names(db, actorId);
-  const targets = db
-    .prepare(`SELECT endpoint, p256dh, auth FROM push_subscription WHERE member_id IN (${ids.map(() => "?").join(",") || "NULL"})`)
-    .all(...ids) as Target[];
-  return send(db, targets, { title: `${name} deleted a plan you said yes to`, body: group });
-}
+export const notifyDeleted = (db: Db, actorId: string, yesMemberIds: string[]) =>
+  notify(db, () => {
+    const ids = yesMemberIds.filter((id) => id !== actorId);
+    if (!ids.length) return null; // `IN ()` is not valid SQL, and there is nobody to tell
+    const { name, group } = names(db, actorId);
+    const targets = db
+      .prepare(`SELECT endpoint, p256dh, auth FROM push_subscription WHERE member_id IN (${ids.map(() => "?").join(",")})`)
+      .all(...ids) as Target[];
+    return { targets, message: { title: `${name} deleted a plan you said yes to`, body: group } };
+  });

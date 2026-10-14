@@ -1,7 +1,7 @@
 import webpush from "web-push";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDb } from "./db";
-import { exportMe, signOutOthers } from "./account";
+import { deleteMe, exportMe, signOutOthers } from "./account";
 import { HttpError, hash, removeMember, startSession } from "./groups";
 import { MAX_DEVICES, notifyDeleted, notifyProposed, publicKey, pushState, subscribePush, unsubscribePush } from "./push";
 import { seed } from "./seed";
@@ -113,6 +113,14 @@ describe("push subscriptions", () => {
     expect(JSON.stringify(data)).not.toContain("fcm.googleapis.com");
   });
 
+  it("goes with the member when they delete their account", () => {
+    const db = fresh();
+    subscribePush(db, "camille", device(db, "camille", "c"), sub(1));
+    subscribePush(db, "diego", device(db, "diego", "d"), sub(2));
+    deleteMe(db, "demo", "camille");
+    expect(db.prepare(`SELECT member_id m FROM push_subscription`).all()).toEqual([{ m: "diego" }]);
+  });
+
   it("goes with the device's sign-out and with the member", () => {
     const db = fresh();
     const a = device(db, "you", "a");
@@ -170,6 +178,15 @@ describe("sending", () => {
     });
     await notifyProposed(db, "demo", "you");
     expect((db.prepare(`SELECT endpoint FROM push_subscription ORDER BY endpoint`).all() as { endpoint: string }[]).map((r) => r.endpoint.split("/").pop())).toEqual(["diego", "you"]);
+  });
+
+  it("never throws when it cannot even look up who to tell", async () => {
+    const db = withDevices();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(notifyProposed(db, "demo", "nobody")).resolves.toBeUndefined(); // the actor is not a member
+    await expect(notifyDeleted(db, "nobody", ["camille"])).resolves.toBeUndefined();
+    expect(sendNotification).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the device and does not throw on other failures, and logs without the address", async () => {
