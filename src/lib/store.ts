@@ -103,23 +103,33 @@ async function load() {
   }
 }
 
-/** Sends one write after the previous one, so changes land in the order they were made. */
-function send(path: string, method: "PATCH" | "POST" | "PUT" | "DELETE", body?: unknown) {
+/**
+ * Sends one write after the previous one, so changes land in the order they were made.
+ * Resolves to the server's refusal message (or a generic one), or null once the write is saved.
+ */
+function send(path: string, method: "PATCH" | "POST" | "PUT" | "DELETE", body?: unknown): Promise<string | null> {
   pending++;
-  queue = queue
+  let refusal: string | null = null;
+  const run = queue
     .then(async () => {
       const res = await fetch(BASE + path, {
         method,
         headers: { "content-type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`);
+      if (!res.ok) {
+        refusal = (await res.json().catch(() => null))?.error ?? "Could not save that. Try again.";
+        throw new Error(`${method} ${path}: ${res.status}`);
+      }
     })
     .catch((e) => {
       console.error("Change not saved, reloading", e);
+      refusal ??= "Could not save that. Try again.";
       return load();
     })
     .finally(() => pending--);
+  queue = run;
+  return run.then(() => refusal);
 }
 
 function subscribe(listener: () => void) {
@@ -179,11 +189,18 @@ export function updateMember(id: string, change: (member: Member) => Member) {
   if (Object.keys(setMarks).length || remove.length) send("/me/overrides", "PATCH", { set: setMarks, remove });
 }
 
-// Outings are not painted optimistically: the server's reload event brings the new list back to every browser, this one included.
+// Outings are not painted optimistically. The server's reload event brings the new list to every browser, but not if live
+// updates are blocked, so a saved write also loads the group; each resolves to an error message to show, or null.
+async function outingWrite(...args: Parameters<typeof send>) {
+  const error = await send(...args);
+  if (!error) await load();
+  return error;
+}
+
 export const proposeOuting = (outing: { title: string; place: string; startQ: number; endQ: number }) =>
-  send("/outings", "POST", outing);
+  outingWrite("/outings", "POST", outing);
 
 export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>
-  send(`/outings/${id}/rsvp`, "PUT", { answer, markBusy });
+  outingWrite(`/outings/${id}/rsvp`, "PUT", { answer, markBusy });
 
-export const removeOuting = (id: string) => send(`/outings/${id}`, "DELETE");
+export const removeOuting = (id: string) => outingWrite(`/outings/${id}`, "DELETE");

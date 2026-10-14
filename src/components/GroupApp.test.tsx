@@ -339,7 +339,22 @@ describe("outings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Propose" }));
     const [w] = await sent(1);
     expect(w).toMatchObject({ path: "/outings", body: { title: "Coffee", place: "Café Y" } });
-    expect(screen.queryByLabelText("What")).toBeNull();
+    await vi.waitFor(() => expect(screen.queryByLabelText("What")).toBeNull());
+  });
+
+  it("keeps the form open and shows the server's reason when a proposal is refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await open();
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? { ok: false, status: 409, json: async () => ({ error: "That time is no longer free for the group" }) }
+        : { ok: true, json: async () => crew },
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
+    fireEvent.click(screen.getByRole("button", { name: "Propose" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("That time is no longer free for the group");
+    expect((screen.getByLabelText("What") as HTMLInputElement).value).toBe("Coffee");
   });
 
   it("does not accept a title of only spaces", async () => {

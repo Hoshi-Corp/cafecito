@@ -30,15 +30,17 @@ export function ProposeForm({
 }) {
   const [title, setTitle] = useState("");
   const [place, setPlace] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const slot = { startQ: w.startQ, endQ: Math.min(w.endQ, w.startQ + MAX_OUTING_QUANTA) };
   const field = "rounded-md border border-line bg-cell px-2 py-1";
   return (
     <form
       className="flex flex-col gap-2 rounded-xl border border-line bg-card p-3 text-sm"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        proposeOuting({ title: title.trim(), place, ...slot });
-        onDone();
+        const refused = await proposeOuting({ title: title.trim(), place, ...slot });
+        if (refused) setError(refused);
+        else onDone();
       }}
     >
       <h2 className="font-medium">Propose {when(slot, zone)}</h2>
@@ -50,6 +52,11 @@ export function ProposeForm({
         <span className="text-xs text-muted">Where (optional)</span>
         <input className={field} value={place} maxLength={120} onChange={(e) => setPlace(e.target.value)} />
       </label>
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
       <div className="flex gap-2">
         <button className="rounded-md bg-foreground px-3 py-1 font-medium text-background">Propose</button>
         <button type="button" className="rounded-md border border-line px-3 py-1" onClick={onDone}>
@@ -77,6 +84,8 @@ export function Outings({ group, zone, now }: { group: Group; zone: string; now:
 
 function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; zone: string }) {
   const [markBusy, setMarkBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = (write: Promise<string | null>) => write.then(setError);
   const mine = o.rsvps[group.meId];
   const names = (a: Rsvp) =>
     group.members.filter((m) => o.rsvps[m.id] === a).map((m) => m.name.trim() || "Unnamed").join(", ");
@@ -89,7 +98,7 @@ function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; z
           {o.place && <span className="text-muted"> · {o.place}</span>}
         </span>
         {canDelete && (
-          <button className="text-xs text-muted underline" onClick={() => confirm(`Delete “${o.title}”?`) && removeOuting(o.id)}>
+          <button className="text-xs text-muted underline" onClick={() => confirm(`Delete “${o.title}”?`) && run(removeOuting(o.id))}>
             Delete
           </button>
         )}
@@ -100,7 +109,7 @@ function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; z
           <button
             key={a.value}
             aria-pressed={mine === a.value}
-            onClick={() => answerOuting(o.id, a.value, markBusy)}
+            onClick={() => run(answerOuting(o.id, a.value, markBusy))}
             className={`rounded-full border px-2.5 py-1 ${mine === a.value ? "border-foreground font-medium" : "border-line text-muted"}`}
           >
             {a.label}
@@ -110,11 +119,16 @@ function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; z
           <input type="checkbox" checked={markBusy} onChange={(e) => {
             setMarkBusy(e.target.checked);
             // Already said yes: ticking the box applies it now, instead of waiting for another click on Yes.
-            if (e.target.checked && mine === "y") answerOuting(o.id, "y", true);
+            if (e.target.checked && mine === "y") run(answerOuting(o.id, "y", true));
           }} />
           Mark busy in my week when I say yes
         </label>
       </div>
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
       {ANSWERS.map((a) => names(a.value) && (
         <p key={a.value} className="text-xs text-muted">
           {a.label}: {names(a.value)}
