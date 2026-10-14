@@ -41,11 +41,11 @@ it("upgrades a database from before the wishlist: only new tables appear, every 
     old.close();
 
     const db = openDb(file);
-    expect(db.pragma("user_version", { simple: true })).toBe(6);
+    expect(db.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
     expect(db.prepare(`SELECT (SELECT count(*) FROM "group") g, (SELECT count(*) FROM member) m, (SELECT count(*) FROM outing) o, (SELECT count(*) FROM rsvp) r`).get()).toEqual({ g: 1, m: 1, o: 1, r: 1 });
     expect(db.prepare(`SELECT (SELECT count(*) FROM place) p, (SELECT count(*) FROM place_vote) v`).get()).toEqual({ p: 0, v: 0 });
     db.close();
-    expect(openDb(file).pragma("user_version", { simple: true })).toBe(6); // opening again runs nothing
+    expect(openDb(file).pragma("user_version", { simple: true })).toBe(MIGRATIONS.length); // opening again runs nothing
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
