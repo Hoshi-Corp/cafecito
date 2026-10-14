@@ -130,7 +130,7 @@ Settled in the 1.1 design and built:
 
 - **Web push only**; email is not a channel. It needs HTTPS, a service worker (`public/sw.js`: it shows the message and opens the app when tapped, and caches nothing) and, on an iPhone, the app added to the Home Screen (hence the small web manifest).
 - **Two triggers**: someone proposed a plan; a plan you said yes to was deleted. Both come from actions that already exist. "A new window where everyone is free" and a weekly reminder are not built.
-- **Who gets them**: everyone in the group except the person who acted, on devices where the switch in Settings is on. Off by default, one switch per device, no per-type muting until there are more types.
+- **Who gets them**: everyone in the group except the person who acted (for a deleted plan, only the members who said yes), on devices where the switch in Settings is on. Off by default, one switch per device, no per-type muting until there are more types.
 - **What is sent**: the person's name and the group's name, never a plan's title, place or time, because the text passes through the browser maker's push server.
 - **A device is a session.** A subscription belongs to the session that made it, so signing out (or "Sign out other devices", or the 180-day expiry) removes it.
 - **Keys**: the VAPID pair is made on first use and kept in `push_key`, so nothing needs configuring and a backup carries it. Losing it only means every device has to turn the switch on again.

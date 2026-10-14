@@ -68,7 +68,7 @@ export function subscribePush(db: Db, memberId: string, tokenHash: string, body:
 export const unsubscribePush = (db: Db, tokenHash: string) =>
   void db.prepare(`DELETE FROM push_subscription WHERE token_hash = ?`).run(tokenHash);
 
-type Target = { endpoint: string; p256dh: string; auth: string };
+type Target = { endpoint: string; tokenHash: string; p256dh: string; auth: string };
 type Message = { title: string; body: string };
 
 // Push services want a contact for the sender; the public address is the natural one (it is already required for HTTPS cookies and email).
@@ -77,15 +77,15 @@ const contact = () => (process.env.CAFECITO_URL?.startsWith("https:") ? process.
 const DAY_SECONDS = 24 * 60 * 60;
 
 /**
- * Looks up who to tell (`plan`, which may return null for nobody) and sends to every device, with no retries. A 404 or 410 means the
- * browser dropped the subscription, so its row goes; any other failure is logged by code only (the endpoint works as a secret).
+ * Looks up who to tell (`audience`, which returns null for nobody) and sends to every device, with no retries. A 404 or 410 means the
+ * browser dropped the subscription, so that row goes; any other failure is logged by code only (the endpoint works as a secret).
  * Never throws, lookups included: a push must not fail the request that caused it.
  * shortcut: all devices are sent to at once, each with a 10 second timeout (12 members x 5 devices at most); queue them if groups grow.
  */
-async function notify(db: Db, plan: () => { targets: Target[]; message: Message } | null) {
+async function notify(db: Db, audience: () => { targets: Target[]; message: Message } | null) {
   try {
-    const found = plan();
-    if (!found?.targets.length) return;
+    const found = audience();
+    if (!found) return;
     publicKey(db); // makes the pair if nobody has asked for it yet
     const keys = db.prepare(`SELECT public_key, private_key FROM push_key`).get() as { public_key: string; private_key: string };
     const payload = JSON.stringify(found.message);
@@ -99,7 +99,9 @@ async function notify(db: Db, plan: () => { targets: Target[]; message: Message 
           });
         } catch (e) {
           const { statusCode, code } = e as { statusCode?: number; code?: string };
-          if (statusCode === 404 || statusCode === 410) db.prepare(`DELETE FROM push_subscription WHERE endpoint = ?`).run(t.endpoint);
+          // Keyed on the session too, so a late "gone" answer cannot delete a subscription the device has since renewed.
+          if (statusCode === 404 || statusCode === 410)
+            db.prepare(`DELETE FROM push_subscription WHERE endpoint = ? AND token_hash = ?`).run(t.endpoint, t.tokenHash);
           else console.error("push failed:", statusCode ?? code ?? "unknown error");
         }
       }),
@@ -109,42 +111,66 @@ async function notify(db: Db, plan: () => { targets: Target[]; message: Message 
   }
 }
 
+const within = (key: string, max: number) => {
+  try {
+    limit(key, max, 60 * MINUTE);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // shortcut: at most 10 notifications (a proposal or a deletion, each reaching all the other devices) per member per hour, counted in
 // memory so a restart forgets them, so a loop of propose and delete cannot buzz everyone's phone. The plan itself still works.
 // Raise it if real use hits it.
 const mayPush = (actorId: string) => {
-  try {
-    limit(`push:${actorId}`, 10, 60 * MINUTE);
-    return true;
-  } catch {
-    console.warn("push skipped: this member already sent 10 notifications in the last hour");
-    return false;
-  }
+  if (within(`push:${actorId}`, 10)) return true;
+  if (within(`push-logged:${actorId}`, 1)) console.warn("push skipped: this member already sent 10 notifications in the last hour"); // once an hour, so a loop cannot flood the log
+  return false;
 };
 
 const names = (db: Db, memberId: string) =>
   db.prepare(`SELECT m.name, g.name "group" FROM member m JOIN "group" g ON g.id = m.group_id WHERE m.id = ?`).get(memberId) as { name: string; group: string };
 
-/** Tells everyone else in the group that this member proposed a plan. Only names, never the plan: the text passes through the browser maker's server. */
-export const notifyProposed = (db: Db, groupId: string, actorId: string) =>
-  notify(db, () => {
-    const { name, group } = names(db, actorId);
-    const targets = db
-      .prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subscription s JOIN member m ON m.id = s.member_id WHERE m.group_id = ? AND m.id != ?`)
-      .all(groupId, actorId) as Target[];
-    if (!targets.length || !mayPush(actorId)) return null; // nobody to tell costs nothing from the hourly limit
-    return { targets, message: { title: `${name} proposed a plan`, body: group } };
-  });
+/**
+ * Who to tell and what to say: the actor's name and the group's, never the plan (the text passes through the browser maker's server).
+ * Null when there is nobody, which costs nothing from the hourly limit, or when the actor has used it up.
+ */
+function audience(db: Db, actorId: string, targets: Target[], say: (name: string) => string) {
+  if (!targets.length || !mayPush(actorId)) return null;
+  const { name, group } = names(db, actorId);
+  return { targets, message: { title: say(name), body: group } };
+}
 
-/** Tells the members who said yes (not the one deleting) that the plan is gone. */
-export const notifyDeleted = (db: Db, actorId: string, yesMemberIds: string[]) =>
+/** Tells everyone else in the group that this member proposed a plan. */
+export const notifyProposed = (db: Db, groupId: string, actorId: string) =>
+  notify(db, () =>
+    audience(
+      db,
+      actorId,
+      db
+        .prepare(
+          `SELECT s.endpoint, s.token_hash tokenHash, s.p256dh, s.auth FROM push_subscription s JOIN member m ON m.id = s.member_id WHERE m.group_id = ? AND m.id != ?`,
+        )
+        .all(groupId, actorId) as Target[],
+      (name) => `${name} proposed a plan`,
+    ),
+  );
+
+/** Tells the members of this group who said yes (not the one deleting) that the plan is gone. */
+export const notifyDeleted = (db: Db, groupId: string, actorId: string, yesMemberIds: string[]) =>
   notify(db, () => {
     const ids = yesMemberIds.filter((id) => id !== actorId);
     if (!ids.length) return null; // `IN ()` is not valid SQL, and there is nobody to tell
-    const { name, group } = names(db, actorId);
-    const targets = db
-      .prepare(`SELECT endpoint, p256dh, auth FROM push_subscription WHERE member_id IN (${ids.map(() => "?").join(",")})`)
-      .all(...ids) as Target[];
-    if (!targets.length || !mayPush(actorId)) return null;
-    return { targets, message: { title: `${name} deleted a plan you said yes to`, body: group } };
+    return audience(
+      db,
+      actorId,
+      db
+        .prepare(
+          `SELECT s.endpoint, s.token_hash tokenHash, s.p256dh, s.auth FROM push_subscription s JOIN member m ON m.id = s.member_id
+           WHERE m.group_id = ? AND s.member_id IN (${ids.map(() => "?").join(",")})`,
+        )
+        .all(groupId, ...ids) as Target[],
+      (name) => `${name} deleted a plan you said yes to`,
+    );
   });

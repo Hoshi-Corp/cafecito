@@ -143,6 +143,29 @@ describe("outing routes", () => {
     }
   });
 
+  it("tells the proposer, not the owner, when the owner deletes someone else's plan", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const sub = (name: string) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${name}`, keys: { p256dh: "BPkey", auth: "auth" } });
+    for (const who of ["you", "diego"]) {
+      as(who);
+      expect((await push.PUT(req(sub(who)), ctx())).status).toBe(200);
+    }
+    as("diego");
+    expect((await outings.POST(req({ title: "Diego's plan", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    const { id } = getDb().prepare(`SELECT id FROM outing WHERE title = 'Diego''s plan'`).get() as { id: string };
+    sendNotification.mockClear();
+    as("you"); // the owner
+    expect((await outingOne.DELETE(req(), ctx({ outingId: id }))).status).toBe(200);
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1));
+    expect(sendNotification.mock.calls[0][0].endpoint).toMatch(/diego$/);
+    for (const who of ["you", "diego"]) {
+      as(who);
+      await push.DELETE(req(), ctx());
+    }
+  });
+
   it("answers without waiting for a push service that never replies", async () => {
     const { members } = await get();
     const q = Math.floor(Date.now() / 900_000);

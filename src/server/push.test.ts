@@ -2,7 +2,7 @@ import webpush from "web-push";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDb } from "./db";
 import { deleteMe, exportMe, signOutOthers } from "./account";
-import { HttpError, hash, removeMember, startSession } from "./groups";
+import { HttpError, createGroup, hash, removeMember, startSession } from "./groups";
 import { MAX_DEVICES, notifyDeleted, notifyProposed, publicKey, pushState, subscribePush, unsubscribePush } from "./push";
 import { clearLimits } from "./limit";
 import { seed } from "./seed";
@@ -162,13 +162,34 @@ describe("sending", () => {
 
   it("tells only the members who said yes, and not the one who deleted, that a plan is gone", async () => {
     const db = withDevices();
-    await notifyDeleted(db, "you", ["you", "camille", "sofia"]);
+    await notifyDeleted(db, "demo", "you", ["you", "camille", "sofia"]);
     expect(sentTo()).toEqual(["camille1", "camille2"]);
     expect(JSON.parse(sendNotification.mock.calls[0][1] as string)).toEqual({ title: "You deleted a plan you said yes to", body: "Café crew" });
     sendNotification.mockClear();
-    await notifyDeleted(db, "you", []); // nobody else said yes: nothing to send
-    await notifyDeleted(db, "you", ["you"]);
+    await notifyDeleted(db, "demo", "you", []); // nobody else said yes: nothing to send
+    await notifyDeleted(db, "demo", "you", ["you"]);
     expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("never tells a member of another group, even if their id is passed in", async () => {
+    const db = withDevices();
+    const other = createGroup(db, { groupName: "Other", name: "Olga" });
+    subscribePush(db, other.memberId, device(db, other.memberId, "o"), sub("olga"));
+    await notifyDeleted(db, "demo", "you", [other.memberId]);
+    expect(sendNotification).not.toHaveBeenCalled();
+    await notifyProposed(db, "demo", "you");
+    expect(sentTo()).not.toContain("olga");
+  });
+
+  it("does not delete a subscription that was renewed while the push to its old session was in flight", async () => {
+    const db = withDevices();
+    sendNotification.mockImplementation(async (s) => {
+      if (!(s as { endpoint: string }).endpoint.endsWith("camille1")) return {} as never;
+      subscribePush(db, "camille", device(db, "camille", "c1-new"), sub("camille1")); // the same address, now under a new session
+      throw Object.assign(new Error("gone"), { statusCode: 410 });
+    });
+    await notifyProposed(db, "demo", "you");
+    expect(db.prepare(`SELECT count(*) n FROM push_subscription WHERE endpoint LIKE '%camille1'`).get()).toEqual({ n: 1 });
   });
 
   it("drops a device the push service says is gone, and only that one", async () => {
@@ -186,7 +207,7 @@ describe("sending", () => {
     const db = withDevices();
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(notifyProposed(db, "demo", "nobody")).resolves.toBeUndefined(); // the actor is not a member
-    await expect(notifyDeleted(db, "nobody", ["camille"])).resolves.toBeUndefined();
+    await expect(notifyDeleted(db, "demo", "nobody", ["camille"])).resolves.toBeUndefined();
     expect(sendNotification).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledTimes(2);
   });
@@ -198,9 +219,9 @@ describe("sending", () => {
     expect(sendNotification).toHaveBeenCalledTimes(10 * 3);
     sendNotification.mockClear();
     await notifyProposed(db, "demo", "you");
-    await notifyDeleted(db, "you", ["camille"]);
+    await notifyDeleted(db, "demo", "you", ["camille"]);
     expect(sendNotification).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1); // once, however many events are held back, so a loop cannot flood the log
     await notifyProposed(db, "demo", "sofia"); // someone else is not held back by it
     expect(sendNotification).toHaveBeenCalled();
   });

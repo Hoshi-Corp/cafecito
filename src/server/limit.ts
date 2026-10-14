@@ -23,4 +23,7 @@ export const clientIp = (req: Request) =>
 export const MINUTE = 60_000;
 
 /** Forgets every count. For tests, which share this module-level state. */
-export const clearLimits = () => hits.clear();
+export const clearLimits = () => {
+  if (process.env.NODE_ENV === "production") throw new Error("clearLimits is for tests");
+  hits.clear();
+};

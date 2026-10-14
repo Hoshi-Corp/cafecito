@@ -6,7 +6,8 @@ export const DELETE = (_req: Request, ctx: RouteContext<"/api/groups/[id]/outing
   handle(
     ctx.params,
     async ({ db, groupId, meId }) => {
-      void notifyDeleted(db, meId, deleteOuting(db, groupId, meId, (await ctx.params).outingId));
+      // Not awaited, so a slow push service cannot delay the answer; deleteOuting runs first and throws before any push on a 403 or 404.
+      void notifyDeleted(db, groupId, meId, deleteOuting(db, groupId, meId, (await ctx.params).outingId));
     },
     "group",
   );
