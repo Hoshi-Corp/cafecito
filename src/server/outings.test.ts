@@ -154,12 +154,14 @@ describe("outings", () => {
     expect(listOutings(db, "demo")).toEqual([]);
   });
 
-  it("keeps the plan and its where-text when the wishlist place is deleted", () => {
+  it("keeps the plan, its where-text and its link to the place when the wishlist place is removed (only hidden)", () => {
     const db = fresh();
     const cafe = createPlace(db, "demo", "camille", { name: "Café Y" }).id;
-    createOuting(db, "demo", "camille", { title: "A", placeId: cafe, ...slot(db) }, NOW);
+    const time = slot(db);
+    createOuting(db, "demo", "camille", { title: "A", placeId: cafe, ...time }, NOW);
     deletePlace(db, "demo", "camille", cafe);
-    expect(listOutings(db, "demo")).toMatchObject([{ place: "Café Y", placeId: null }]);
+    expect(listOutings(db, "demo")).toMatchObject([{ place: "Café Y", placeId: cafe }]);
+    expect(status(() => createOuting(db, "demo", "diego", { title: "B", placeId: cafe, ...slot(db) }, NOW))).toBe(404); // not offered any more
   });
 
   it("only accepts a time the group is free for", () => {

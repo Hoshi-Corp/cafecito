@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import { deleteMe, exportMe } from "./account";
 import { HttpError, createGroup, removeMember } from "./groups";
-import { MAX_COMMENTS, MAX_PLACES, addComment, clearRating, createPlace, deleteComment, deletePlace, listPlaces, ratePlace, updatePlace, votePlace } from "./places";
+import { MAX_COMMENTS, MAX_PLACES, MAX_PLACE_ROWS, addComment, clearRating, createPlace, deleteComment, deletePlace, listPlaces, ratePlace, updatePlace, votePlace } from "./places";
 import { seed } from "./seed";
 
 const fresh = () => {
@@ -19,7 +19,7 @@ const status = (fn: () => void) => {
   return 0;
 };
 const add = (db: ReturnType<typeof fresh>, by = "camille", body: object = {}) =>
-  createPlace(db, "demo", by, { name: " Café X ", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", ...body }, 1000).id;
+  createPlace(db, "demo", by, { name: " Café X ", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", ...body }, 1000).id;
 
 describe("wishlist", () => {
   it("adds a place and lists it with its votes", () => {
@@ -119,8 +119,8 @@ describe("wishlist", () => {
     add(db, "diego", { name: "Unrelated" });
     votePlace(db, "demo", "camille", voted, true);
     expect(exportMe(db, "camille").places).toEqual([
-      { name: "Mine", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: true, votedByMe: false, myStars: null, myComments: [] },
-      { name: "Voted", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: false, votedByMe: true, myStars: null, myComments: [] },
+      { name: "Mine", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: true, votedByMe: false, removed: false, myStars: null, myComments: [] },
+      { name: "Voted", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: false, votedByMe: true, removed: false, myStars: null, myComments: [] },
     ]);
   });
 });
@@ -218,3 +218,67 @@ describe("ratings and comments", () => {
     ]);
   });
 });
+
+describe("removing a place", () => {
+  const counts = (db: ReturnType<typeof fresh>) =>
+    db.prepare(`SELECT (SELECT count(*) FROM place_vote) v, (SELECT count(*) FROM place_rating) r, (SELECT count(*) FROM place_comment) c`).get();
+
+  it("takes it off the list and keeps its votes, ratings and comments as history", () => {
+    const db = fresh();
+    const id = add(db);
+    votePlace(db, "demo", "diego", id, true);
+    ratePlace(db, "demo", "diego", id, { stars: 4 });
+    addComment(db, "demo", "diego", id, { body: "Nice" });
+    deletePlace(db, "demo", "camille", id, 5000);
+    expect(listPlaces(db, "demo")).toEqual([]);
+    expect(counts(db)).toEqual({ v: 1, r: 1, c: 1 });
+    expect(db.prepare(`SELECT deleted_at deletedAt FROM place WHERE id = ?`).get(id)).toEqual({ deletedAt: 5000 });
+  });
+
+  it("can no longer be voted on, rated, commented on, edited or removed again", () => {
+    const db = fresh();
+    const id = add(db);
+    deletePlace(db, "demo", "camille", id);
+    expect(status(() => votePlace(db, "demo", "you", id, true))).toBe(404);
+    expect(status(() => ratePlace(db, "demo", "you", id, { stars: 3 }))).toBe(404);
+    expect(status(() => clearRating(db, "demo", "you", id))).toBe(404);
+    expect(status(() => addComment(db, "demo", "you", id, { body: "x" }))).toBe(404);
+    expect(status(() => updatePlace(db, "demo", "you", id, { beenThere: true }))).toBe(404);
+    expect(status(() => deletePlace(db, "demo", "you", id))).toBe(404);
+  });
+
+  it("frees a slot on the list, but removed places still count toward the overall limit", () => {
+    const db = fresh();
+    for (let i = 0; i < MAX_PLACES; i++) add(db);
+    expect(status(() => add(db))).toBe(409);
+    deletePlace(db, "demo", "you", listPlaces(db, "demo")[0].id);
+    expect(status(() => add(db))).toBe(0);
+    for (let i = 0; i < MAX_PLACE_ROWS; i++) {
+      const [first] = listPlaces(db, "demo");
+      if (!first) break;
+      deletePlace(db, "demo", "you", first.id);
+      if (status(() => add(db)) !== 0) break;
+    }
+    expect(db.prepare(`SELECT count(*) n FROM place`).get()).toEqual({ n: MAX_PLACE_ROWS });
+    expect(status(() => add(db))).toBe(409);
+  });
+
+  it("is still in my export, marked removed, when I had a part in it", () => {
+    const db = fresh();
+    const id = add(db, "camille", { name: "Gone" });
+    ratePlace(db, "demo", "camille", id, { stars: 2 });
+    deletePlace(db, "demo", "camille", id);
+    expect(exportMe(db, "camille").places).toEqual([expect.objectContaining({ name: "Gone", removed: true, myStars: 2 })]);
+  });
+
+  it("goes for good with its group", () => {
+    const db = fresh();
+    const id = add(db);
+    votePlace(db, "demo", "diego", id, true);
+    deletePlace(db, "demo", "camille", id);
+    for (const m of ["camille", "diego", "sofia", "kenji", "you"]) deleteMe(db, "demo", m);
+    expect(db.prepare(`SELECT (SELECT count(*) FROM place) p`).get()).toEqual({ p: 0 });
+    expect(counts(db)).toEqual({ v: 0, r: 0, c: 0 });
+  });
+});
+
