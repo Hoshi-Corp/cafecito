@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_PATTERN, QUANTA_PER_DAY, paintPattern, shiftPattern } from "@/lib/availability";
 import { retryLoad } from "@/lib/store";
@@ -440,13 +440,14 @@ describe("wishlist", () => {
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(await sent(1)).toHaveLength(1);
+    await vi.waitFor(() => expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("")); // the form starts over
     vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
       init?.method === "POST"
         ? { ok: false, status: 400, json: async () => ({ error: "Links must start with http:// or https://" }) }
         : { ok: true, json: async () => crew },
     );
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Café Z" } });
-    fireEvent.submit(form);
+    fireEvent.submit(screen.getByLabelText("Name").closest("form")!);
     expect((await screen.findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Café Z");
   });
@@ -473,5 +474,45 @@ describe("wishlist", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove Café X" }));
     expect(await sent(1)).toEqual([{ path: "/places/p1", body: null }]);
   });
-});
 
+  it("edits a place: only the fields that changed are sent, nothing when none did", async () => {
+    await open({ ...crew, meId: "b", places: [place] });
+    const form = () => within(screen.getByRole("heading", { name: "Edit Café X" }).closest("li")!);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Café X" }));
+    expect((form().getByLabelText("Name") as HTMLInputElement).value).toBe("Café X");
+    expect((form().getByLabelText("Notes (optional)") as HTMLTextAreaElement).value).toBe("Great pastries");
+    fireEvent.click(form().getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => expect(screen.queryByRole("heading", { name: "Edit Café X" })).toBeNull());
+    expect(writes).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Café X" }));
+    fireEvent.change(form().getByLabelText("Name"), { target: { value: " Café Z " } });
+    fireEvent.change(form().getByLabelText("Website (optional)"), { target: { value: "" } });
+    fireEvent.click(form().getByRole("button", { name: "Save" }));
+    expect(await sent(1)).toEqual([{ path: "/places/p1", body: { name: "Café Z", link: "" } }]);
+    await vi.waitFor(() => expect(screen.queryByRole("heading", { name: "Edit Café X" })).toBeNull());
+  });
+
+  it("cancels an edit, keeps it open with the reason when refused, and offers Edit only to the suggester or the owner", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const mine = { ...crew, meId: "c", places: [place, { ...wanted, suggestedBy: "c" }] };
+    await open(mine);
+    expect(screen.queryByRole("button", { name: "Edit Café X" })).toBeNull();
+    const form = () => within(screen.getByRole("heading", { name: "Edit Wanted" }).closest("li")!);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Wanted" }));
+    fireEvent.click(form().getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("heading", { name: "Edit Wanted" })).toBeNull();
+    expect(writes).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Wanted" }));
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? { ok: false, status: 400, json: async () => ({ error: "Links must start with http:// or https://" }) }
+        : { ok: true, json: async () => mine }, // a refused write reloads the group
+    );
+    fireEvent.change(form().getByLabelText("Website (optional)"), { target: { value: "https://ok.example" } });
+    fireEvent.click(form().getByRole("button", { name: "Save" }));
+    expect((await form().findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
+    expect((form().getByLabelText("Website (optional)") as HTMLInputElement).value).toBe("https://ok.example");
+  });
+});

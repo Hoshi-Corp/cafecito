@@ -212,3 +212,6 @@ export const votePlace = (id: string, on: boolean) => listWrite(`/places/${id}/v
 export const setBeenThere = (id: string, beenThere: boolean) => listWrite(`/places/${id}`, "PATCH", { beenThere });
 
 export const removePlace = (id: string) => listWrite(`/places/${id}`, "DELETE");
+
+export const editPlace = (id: string, fields: Partial<{ name: string; link: string; mapLink: string; notes: string }>) =>
+  listWrite(`/places/${id}`, "PATCH", fields);
