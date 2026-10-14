@@ -36,6 +36,8 @@ export interface Group {
   recovery?: boolean;
   /** Proposed outings, soonest first. */
   outings?: Outing[];
+  /** The wishlist, oldest first. */
+  places?: Place[];
 }
 
 export interface OverrideChange {
@@ -68,4 +70,20 @@ export interface Outing {
   createdBy: string | null;
   /** Answers by member id; members who have not answered are absent. */
   rsvps: Record<string, Rsvp>;
+}
+
+/** A café or restaurant on the group's wishlist. */
+export interface Place {
+  id: string;
+  name: string;
+  /** Website, or "". Always http(s). */
+  link: string;
+  /** Map link, or "". Always http(s). */
+  mapLink: string;
+  notes: string;
+  /** Who suggested it; null once they left the group. */
+  suggestedBy: string | null;
+  beenThere: boolean;
+  /** Members who want to go. */
+  votes: string[];
 }

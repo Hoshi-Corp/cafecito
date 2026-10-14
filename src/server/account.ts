@@ -55,6 +55,14 @@ export function exportMe(db: Db, memberId: string) {
        WHERE o.created_by = @m OR r.member_id = @m ORDER BY o.start_q`,
     )
     .all({ m: memberId }) as { title: string; place: string; s: number; e: number; proposedByMe: number; answer: string | null }[];
+  const places = db
+    .prepare(
+      `SELECT p.name, p.link, p.map_link mapLink, p.notes, p.been_there beenThere, p.suggested_by = @m suggestedByMe,
+              EXISTS (SELECT 1 FROM place_vote v WHERE v.place_id = p.id AND v.member_id = @m) votedByMe
+       FROM place p WHERE p.suggested_by = @m OR EXISTS (SELECT 1 FROM place_vote v WHERE v.place_id = p.id AND v.member_id = @m)
+       ORDER BY p.created_at, p.rowid`,
+    )
+    .all({ m: memberId }) as { name: string; link: string; mapLink: string; notes: string; beenThere: number; suggestedByMe: number | null; votedByMe: number }[];
   return {
     exportedAt: new Date().toISOString(),
     ...me,
@@ -70,13 +78,23 @@ export function exportMe(db: Db, memberId: string) {
       myAnswer: p.answer,
     })),
     plansFormat: "plans I proposed or answered; UTC times; myAnswer y yes, m maybe, n no, null none",
+    places: places.map((p) => ({
+      name: p.name,
+      link: p.link,
+      mapLink: p.mapLink,
+      notes: p.notes,
+      beenThere: p.beenThere === 1,
+      suggestedByMe: p.suggestedByMe === 1,
+      votedByMe: p.votedByMe === 1,
+    })),
+    placesFormat: "wishlist places I suggested or voted for",
     devices: sessions.map((s) => ({ device: s.device, signedIn: iso(s.created_at), lastUsed: iso(s.last_seen) })),
   };
 }
 
 /**
  * Deletes the member with their availability, sessions and sign-in links. A group keeps an owner: if the owner
- * leaves, the member who joined first takes over; when nobody is left, the group and its invites go too.
+ * leaves, the member who joined first takes over; when nobody is left, the group with its invites, plans and wishlist goes too.
  */
 export function deleteMe(db: Db, groupId: string, memberId: string) {
   db.transaction(() => {
@@ -88,6 +106,7 @@ export function deleteMe(db: Db, groupId: string, memberId: string) {
     if (!db.prepare(`SELECT 1 FROM member WHERE group_id = ?`).get(groupId)) {
       db.prepare(`DELETE FROM invite WHERE group_id = ?`).run(groupId);
       db.prepare(`DELETE FROM outing WHERE group_id = ?`).run(groupId);
+      db.prepare(`DELETE FROM place WHERE group_id = ?`).run(groupId);
       db.prepare(`DELETE FROM "group" WHERE id = ?`).run(groupId);
     }
   })();
