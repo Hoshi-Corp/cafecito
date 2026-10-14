@@ -172,7 +172,7 @@ To always know what you are running, you can use a version number instead of `la
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CAFECITO_URL` | none | Public address, such as `https://cafecito.example.org`. Used in emailed links. With `https://`, the session cookie is only sent over HTTPS. |
+| `CAFECITO_URL` | none | Public address, such as `https://cafecito.example.org`. Used in emailed links and as the contact push services see (Apple's may refuse a push without it). With `https://`, the session cookie is only sent over HTTPS. |
 | `SMTP_URL` | none | Mail server, such as `smtps://user:pass@smtp.example.org:465`. Email sign-in is on only when this, `SMTP_FROM` and `CAFECITO_URL` are all set. |
 | `SMTP_FROM` | none | Sender of the emails. |
 | `CAFECITO_DB` | `/data/cafecito.db` | Where the database lives in the container. |
@@ -180,7 +180,7 @@ To always know what you are running, you can use a version number instead of `la
 
 ## Notifications
 
-Members can turn on push notifications in Settings, one switch per device. They need the HTTPS address from step 1 (browsers refuse push on plain HTTP). On an iPhone or iPad the app must first be added to the Home Screen (Share, then Add to Home Screen); the installed app starts signed out, so the member needs their personal link there. Only the push services of Chrome and Android (Google), Firefox, Safari and Edge are accepted; the server's key pair is made on first use and lives in the database, so backups carry it.
+Members can turn on push notifications in Settings, one switch per device. They need the HTTPS address from step 1 (browsers refuse push on plain HTTP). On an iPhone or iPad the app must first be added to the Home Screen (Share, then Add to Home Screen); the installed app starts signed out, so the member needs their personal link there. The server sends a push when someone proposes a plan, and to the people who said yes when a plan is deleted; it reaches the browser makers' push servers over the internet, so the server needs outbound HTTPS. Only the push services of Chrome and Android (Google), Firefox, Safari and Edge are accepted; the server's key pair is made on first use and lives in the database, so backups carry it.
 
 ## Limit who can create groups
 

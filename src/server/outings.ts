@@ -79,17 +79,19 @@ export function answerOuting(db: Db, groupId: string, memberId: string, outingId
   })();
 }
 
-/** The person who proposed it, or the owner. */
+/** The person who proposed it, or the owner. Returns who had said yes, so they can be told. */
 export function deleteOuting(db: Db, groupId: string, memberId: string, outingId: string) {
   const o = db.prepare(`SELECT created_by createdBy, start_q startQ, end_q endQ FROM outing WHERE id = ? AND group_id = ?`).get(outingId, groupId) as
     | { createdBy: string | null; startQ: number; endQ: number }
     | undefined;
   if (!o) throw new HttpError(404, "No such outing");
   if (o.createdBy !== memberId) assertOwner(db, memberId);
+  const wentIds = (db.prepare(`SELECT member_id id FROM rsvp WHERE outing_id = ? AND answer = 'y'`).all(outingId) as { id: string }[]).map((r) => r.id);
   db.transaction(() => {
     db.prepare(`DELETE FROM outing WHERE id = ?`).run(outingId);
     // Proposing marked the author busy; give them their typical week back.
     // shortcut: clears every mark in that range, also one from another plan or by hand; track marks per plan if that bites.
     if (o.createdBy) patchOverrides(db, o.createdBy, { remove: Array.from({ length: o.endQ - o.startQ }, (_, i) => o.startQ + i) });
   })();
+  return wentIds;
 }

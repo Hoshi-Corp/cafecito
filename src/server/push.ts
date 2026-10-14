@@ -2,7 +2,7 @@ import webpush from "web-push";
 import type { Db } from "./db";
 import { HttpError, isObject } from "./groups";
 
-// Web push: which devices want notifications. Nothing is sent from here yet.
+// Web push: which devices want notifications, and sending to them.
 
 // shortcut: a member's sixth device silently replaces their oldest; add a "devices" list to Settings if that confuses anyone.
 export const MAX_DEVICES = 5;
@@ -66,3 +66,65 @@ export function subscribePush(db: Db, memberId: string, tokenHash: string, body:
 /** Turns notifications off for this device. */
 export const unsubscribePush = (db: Db, tokenHash: string) =>
   void db.prepare(`DELETE FROM push_subscription WHERE token_hash = ?`).run(tokenHash);
+
+type Target = { endpoint: string; p256dh: string; auth: string };
+type Message = { title: string; body: string };
+
+// Push services want a contact for the sender; the public address is the natural one (it is already required for HTTPS cookies and email).
+// shortcut: without CAFECITO_URL a placeholder is used, which Apple's push service may refuse; set CAFECITO_URL.
+const contact = () => (process.env.CAFECITO_URL?.startsWith("https:") ? process.env.CAFECITO_URL : "mailto:cafecito@example.invalid");
+const DAY_SECONDS = 24 * 60 * 60;
+
+/**
+ * Sends to every device, at once, with no retries. A 404 or 410 means the browser dropped the subscription, so its row goes;
+ * any other failure is logged by code only (the endpoint works as a secret). Never throws: a push must not fail the request that caused it.
+ */
+async function send(db: Db, targets: Target[], message: Message) {
+  try {
+    if (!targets.length) return;
+    publicKey(db); // makes the pair if nobody has asked for it yet
+    const keys = db.prepare(`SELECT public_key, private_key FROM push_key`).get() as { public_key: string; private_key: string };
+    const payload = JSON.stringify(message);
+    await Promise.all(
+      targets.map(async (t) => {
+        try {
+          await webpush.sendNotification({ endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } }, payload, {
+            TTL: DAY_SECONDS,
+            timeout: 10_000,
+            vapidDetails: { subject: contact(), publicKey: keys.public_key, privateKey: keys.private_key },
+          });
+        } catch (e) {
+          const { statusCode, code } = e as { statusCode?: number; code?: string };
+          if (statusCode === 404 || statusCode === 410) db.prepare(`DELETE FROM push_subscription WHERE endpoint = ?`).run(t.endpoint);
+          else console.error("push failed:", statusCode ?? code ?? "unknown error");
+        }
+      }),
+    );
+  } catch (e) {
+    console.error("push failed:", e instanceof Error ? e.name : "unknown error");
+  }
+}
+
+const names = (db: Db, memberId: string) =>
+  db.prepare(`SELECT m.name, g.name "group" FROM member m JOIN "group" g ON g.id = m.group_id WHERE m.id = ?`).get(memberId) as { name: string; group: string };
+
+/** Tells everyone else in the group that this member proposed a plan. Only names, never the plan: the text passes through the browser maker's server. */
+export function notifyProposed(db: Db, groupId: string, actorId: string) {
+  const { name, group } = names(db, actorId);
+  const targets = db
+    .prepare(
+      `SELECT s.endpoint, s.p256dh, s.auth FROM push_subscription s JOIN member m ON m.id = s.member_id WHERE m.group_id = ? AND m.id != ?`,
+    )
+    .all(groupId, actorId) as Target[];
+  return send(db, targets, { title: `${name} proposed a plan`, body: group });
+}
+
+/** Tells the members who said yes (not the one deleting) that the plan is gone. */
+export function notifyDeleted(db: Db, actorId: string, wentMemberIds: string[]) {
+  const ids = wentMemberIds.filter((id) => id !== actorId);
+  const { name, group } = names(db, actorId);
+  const targets = db
+    .prepare(`SELECT endpoint, p256dh, auth FROM push_subscription WHERE member_id IN (${ids.map(() => "?").join(",") || "NULL"})`)
+    .all(...ids) as Target[];
+  return send(db, targets, { title: `${name} deleted a plan you said yes to`, body: group });
+}

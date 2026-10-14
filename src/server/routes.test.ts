@@ -10,6 +10,8 @@ vi.mock("next/headers", () => ({
   }),
 }));
 const { sendMail } = vi.hoisted(() => ({ sendMail: vi.fn<(mail: { to: string; text: string }) => Promise<void>>(async () => {}) }));
+const { sendNotification } = vi.hoisted(() => ({ sendNotification: vi.fn<(sub: { endpoint: string }, payload: string) => Promise<unknown>>(async () => ({})) }));
+vi.mock("web-push", async (original) => ({ default: { ...(await original<{ default: object }>()).default, sendNotification } }));
 vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail }) } }));
 process.env.CAFECITO_DB = ":memory:";
 process.env.CAFECITO_DEMO = "1";
@@ -104,6 +106,57 @@ describe("API routes", () => {
 });
 
 describe("outing routes", () => {
+  it("pushes to the other members' devices when a plan is proposed, and to those who said yes when it is deleted", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const one = (outingId: string) => ctx({ outingId });
+    const sub = (name: string) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${name}`, keys: { p256dh: "BPkey", auth: "auth" } });
+    for (const who of ["you", "kenji", "diego"]) {
+      as(who);
+      expect((await push.PUT(req(sub(who)), ctx())).status).toBe(200);
+    }
+    sendNotification.mockClear();
+    as("you");
+    expect((await outings.POST(req({ title: "Secret brunch", place: "Hidden Café", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(2));
+    expect(sendNotification.mock.calls.map(([s]) => s.endpoint.split("/").pop()).sort()).toEqual(["diego", "kenji"]);
+    const text = JSON.stringify(sendNotification.mock.calls.map(([, payload]) => payload));
+    expect(text).toMatch(/proposed a plan/);
+    expect(text).not.toMatch(/Secret brunch|Hidden/); // the plan's details never leave the server
+    const { id } = getDb().prepare(`SELECT id FROM outing WHERE title = 'Secret brunch'`).get() as { id: string };
+    as("kenji");
+    expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200);
+    as("diego");
+    expect((await outingRsvp.PUT(req({ answer: "m" }), one(id))).status).toBe(200); // maybe: not told
+    sendNotification.mockClear();
+    as("you");
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(200);
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1));
+    expect(sendNotification.mock.calls[0][0].endpoint).toMatch(/kenji$/);
+    expect(sendNotification.mock.calls[0][1]).toContain("deleted a plan you said yes to");
+    for (const who of ["you", "kenji", "diego"]) {
+      as(who);
+      await push.DELETE(req(), ctx()); // leave the shared demo members as other tests expect them
+    }
+  });
+
+  it("still answers when the push service fails", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    as("sofia");
+    expect((await push.PUT(req({ endpoint: "https://fcm.googleapis.com/fcm/send/sofia", keys: { p256dh: "BPkey", auth: "auth" } }), ctx())).status).toBe(200);
+    sendNotification.mockClear();
+    sendNotification.mockRejectedValueOnce(Object.assign(new Error("down"), { statusCode: 503 }));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    as("you");
+    expect((await outings.POST(req({ title: "Lunch", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith("push failed:", 503));
+    log.mockRestore();
+    as("sofia");
+    await push.DELETE(req(), ctx());
+  });
   it("needs a session and JSON, then proposes, answers and deletes", async () => {
     const { members } = await get();
     const q = Math.floor(Date.now() / 900_000);
