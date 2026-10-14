@@ -32,11 +32,12 @@ const make = (db: ReturnType<typeof fresh>, by = "camille") =>
 describe("outings", () => {
   it("creates, lists and answers", () => {
     const db = fresh();
+    const time = slot(db); // before the proposer's time turns busy
     const id = make(db);
     answerOuting(db, "demo", "diego", id, { answer: "y" }, NOW);
     answerOuting(db, "demo", "diego", id, { answer: "m" }, NOW);
     expect(listOutings(db, "demo")).toEqual([
-      { id, title: "Brunch", place: "Café X", ...slot(db), createdBy: "camille", rsvps: { camille: "y", diego: "m" } },
+      { id, title: "Brunch", place: "Café X", ...time, createdBy: "camille", rsvps: { camille: "y", diego: "m" } },
     ]);
   });
 
@@ -54,6 +55,15 @@ describe("outings", () => {
     const id = make(db);
     expect(status(() => answerOuting(db, "demo", "you", id, { answer: "x" }))).toBe(400);
     expect(status(() => answerOuting(db, "demo", "you", "nope", { answer: "y" }))).toBe(404);
+  });
+
+  it("marks the proposer busy for the plan's time, and nobody else", () => {
+    const db = fresh();
+    const { startQ } = slot(db);
+    make(db);
+    const busy = (id: string) => Object.keys(loadGroup(db, "demo", "you").members.find((m) => m.id === id)!.overrides).map(Number);
+    expect(busy("camille")).toEqual([startQ, startQ + 1, startQ + 2, startQ + 3]);
+    expect(busy("diego")).toEqual([]);
   });
 
   it("only accepts a time the group is free for", () => {
