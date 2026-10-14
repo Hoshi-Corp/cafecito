@@ -104,7 +104,7 @@ describe("outing routes", () => {
     as("you");
     expect((await outings.POST(req("x", "text/plain"), ctx())).status).toBe(415);
     expect((await outings.POST(req({ ...body, startQ: Math.floor(body.startQ), endQ: Math.floor(body.endQ) }), ctx())).status).toBe(200);
-    const [{ id }] = await (await outings.GET(req(), ctx())).json();
+    const { id } = getDb().prepare(`SELECT id FROM outing`).get() as { id: string };
     expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200);
     expect((await outingRsvp.PUT(req({ answer: "?" }), one(id))).status).toBe(400);
     as("camille");
