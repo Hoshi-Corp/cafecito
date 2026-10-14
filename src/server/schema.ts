@@ -153,4 +153,22 @@ export const MIGRATIONS = [
   `
   ALTER TABLE place ADD COLUMN deleted_at INTEGER;
   `,
+  // 1.1: web push. One row per device that turned notifications on; it goes with its session (sign-out) and its member.
+  // push_key holds the server's one VAPID key pair, made on first use.
+  `
+  CREATE TABLE push_subscription (
+    endpoint TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL REFERENCES session(token_hash) ON DELETE CASCADE,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX push_subscription_member ON push_subscription(member_id);
+  CREATE TABLE push_key (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    public_key TEXT NOT NULL,
+    private_key TEXT NOT NULL
+  );
+  `,
 ];

@@ -55,6 +55,7 @@ export function exportMe(db: Db, memberId: string) {
        WHERE o.created_by = @m OR r.member_id = @m ORDER BY o.start_q`,
     )
     .all({ m: memberId }) as { title: string; place: string; s: number; e: number; proposedByMe: number; answer: string | null }[];
+  const { n: notificationDevices } = db.prepare(`SELECT count(*) n FROM push_subscription WHERE member_id = ?`).get(memberId) as { n: number };
   const places = db
     .prepare(
       `SELECT * FROM (
@@ -99,6 +100,7 @@ export function exportMe(db: Db, memberId: string) {
     })),
     placesFormat: "wishlist places I suggested, voted for, rated or commented on, removed ones included (removed: true); myStars 1 to 5 or null",
     devices: sessions.map((s) => ({ device: s.device, signedIn: iso(s.created_at), lastUsed: iso(s.last_seen) })),
+    notificationDevices, // a count only: the push addresses work as secrets, so they are not exported
   };
 }
 

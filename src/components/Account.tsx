@@ -5,6 +5,7 @@ import { retryLoad } from "@/lib/store";
 import type { Group } from "@/lib/types";
 import { AccessLink, field } from "./Entry";
 import { call } from "./Manage";
+import { Notifications } from "./Notifications";
 
 type Session = { device: string; createdAt: number; lastSeen: number; current: boolean };
 
@@ -77,6 +78,7 @@ export function Account({ group }: { group: Group }) {
         </form>
       )}
       {note && <p role="status" className="text-xs text-muted">{note}</p>}
+      <Notifications />
       <div className="flex flex-col gap-1">
         <h4 className="text-xs text-muted">Signed-in devices</h4>
         <ul className="flex flex-col gap-0.5 text-xs">

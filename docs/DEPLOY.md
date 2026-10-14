@@ -160,7 +160,7 @@ To always know what you are running, you can use a version number instead of `la
 
 ### Upgrade notes
 
-**To 1.1, from 1.0.x.** Automatic, and only adds: the database gets six new tables (plans and their answers; the wishlist with its votes, ratings and comments); plans get one new optional column (the wishlist place they point at) and places one more (when a place was removed); one table (wishlist comments) is rebuilt, with every row copied. Nothing already stored is changed or deleted. It happens on the first request after the new version starts, in one quick step; if that step fails, nothing is applied and the app answers with errors until you fix it or go back. Take the backup first (step 2). To go back, restore the backup you took and use the old version (see above). Staying on the new database with the old version also works, because the old version ignores tables it does not know, but it can then fail to delete the last member of a group that has plans or places, so restore the backup instead.
+**To 1.1, from 1.0.x.** Automatic, and only adds: the database gets eight new tables (plans and their answers; the wishlist with its votes, ratings and comments; which devices want notifications, and the server's notification key); plans get one new optional column (the wishlist place they point at) and places one more (when a place was removed); one table (wishlist comments) is rebuilt, with every row copied. Nothing already stored is changed or deleted. It happens on the first request after the new version starts, in one quick step; if that step fails, nothing is applied and the app answers with errors until you fix it or go back. Take the backup first (step 2). From now on a backup also holds the notification private key (the same trust as the rest of the database file). To go back, restore the backup you took and use the old version (see above). Staying on the new database with the old version also works, because the old version ignores tables it does not know, but it can then fail to delete the last member of a group that has plans or places, so restore the backup instead.
 
 **To 1.0, from 0.4 or 0.5 (built from `main`).** Automatic. Date-specific availability is stored as time ranges instead of one row per 15 minutes, and anything that ended more than a week ago is deleted; past weeks then show the typical week. Everyone stays signed in. From now on, a browser left unused for 180 days is signed out.
 
@@ -177,6 +177,10 @@ To always know what you are running, you can use a version number instead of `la
 | `SMTP_FROM` | none | Sender of the emails. |
 | `CAFECITO_DB` | `/data/cafecito.db` | Where the database lives in the container. |
 | `CAFECITO_DEMO` | off | `1` adds a demo group with public sign-in tokens. **Never** on a server others can reach. |
+
+## Notifications
+
+Members can turn on push notifications in Settings, one switch per device. They need the HTTPS address from step 1 (browsers refuse push on plain HTTP). On an iPhone or iPad the app must first be added to the Home Screen (Share, then Add to Home Screen); the installed app starts signed out, so the member needs their personal link there. Only the push services of Chrome and Android (Google), Firefox, Safari and Edge are accepted; the server's key pair is made on first use and lives in the database, so backups carry it.
 
 ## Limit who can create groups
 
