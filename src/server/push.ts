@@ -109,13 +109,15 @@ async function notify(db: Db, plan: () => { targets: Target[]; message: Message 
   }
 }
 
-// shortcut: at most 10 pushes per member per hour (counted in memory, so a restart forgets them), so a loop of propose and delete
-// cannot buzz everyone's phone. The plan itself still works. Raise it if real use hits it.
+// shortcut: at most 10 notifications (a proposal or a deletion, each reaching all the other devices) per member per hour, counted in
+// memory so a restart forgets them, so a loop of propose and delete cannot buzz everyone's phone. The plan itself still works.
+// Raise it if real use hits it.
 const mayPush = (actorId: string) => {
   try {
     limit(`push:${actorId}`, 10, 60 * MINUTE);
     return true;
   } catch {
+    console.warn("push skipped: this member already sent 10 notifications in the last hour");
     return false;
   }
 };
@@ -126,11 +128,11 @@ const names = (db: Db, memberId: string) =>
 /** Tells everyone else in the group that this member proposed a plan. Only names, never the plan: the text passes through the browser maker's server. */
 export const notifyProposed = (db: Db, groupId: string, actorId: string) =>
   notify(db, () => {
-    if (!mayPush(actorId)) return null;
     const { name, group } = names(db, actorId);
     const targets = db
       .prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subscription s JOIN member m ON m.id = s.member_id WHERE m.group_id = ? AND m.id != ?`)
       .all(groupId, actorId) as Target[];
+    if (!targets.length || !mayPush(actorId)) return null; // nobody to tell costs nothing from the hourly limit
     return { targets, message: { title: `${name} proposed a plan`, body: group } };
   });
 
@@ -138,10 +140,11 @@ export const notifyProposed = (db: Db, groupId: string, actorId: string) =>
 export const notifyDeleted = (db: Db, actorId: string, yesMemberIds: string[]) =>
   notify(db, () => {
     const ids = yesMemberIds.filter((id) => id !== actorId);
-    if (!ids.length || !mayPush(actorId)) return null; // `IN ()` is not valid SQL, and there is nobody to tell
+    if (!ids.length) return null; // `IN ()` is not valid SQL, and there is nobody to tell
     const { name, group } = names(db, actorId);
     const targets = db
       .prepare(`SELECT endpoint, p256dh, auth FROM push_subscription WHERE member_id IN (${ids.map(() => "?").join(",")})`)
       .all(...ids) as Target[];
+    if (!targets.length || !mayPush(actorId)) return null;
     return { targets, message: { title: `${name} deleted a plan you said yes to`, body: group } };
   });

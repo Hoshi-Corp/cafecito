@@ -21,3 +21,6 @@ export const clientIp = (req: Request) =>
   req.headers.get("x-forwarded-for")?.split(",").pop()?.trim() || "unknown";
 
 export const MINUTE = 60_000;
+
+/** Forgets every count. For tests, which share this module-level state. */
+export const clearLimits = () => hits.clear();

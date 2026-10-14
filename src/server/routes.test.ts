@@ -41,6 +41,7 @@ const push = await import("@/app/api/groups/[id]/me/push/route");
 const signIn = await import("@/app/api/sign-in/route");
 const signInLink = await import("@/app/api/sign-in/link/route");
 const { handle, SESSION_COOKIE } = await import("./http");
+const { clearLimits } = await import("./limit");
 const { subscribe } = await import("./events");
 const { getDb } = await import("./db");
 const { bestWindows, isSetUp } = await import("@/lib/availability");
@@ -58,6 +59,7 @@ const get = async () => (await group.GET(req(), ctx())).json();
 const profile = { name: "Zed", color: "#112233", timeZone: "Europe/Paris" };
 
 beforeEach(() => {
+  clearLimits();
   jar.clear();
   as("you");
 });
@@ -139,6 +141,21 @@ describe("outing routes", () => {
       as(who);
       await push.DELETE(req(), ctx()); // leave the shared demo members as other tests expect them
     }
+  });
+
+  it("answers without waiting for a push service that never replies", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    as("kenji");
+    expect((await push.PUT(req({ endpoint: "https://fcm.googleapis.com/fcm/send/kenji", keys: { p256dh: "BPkey", auth: "auth" } }), ctx())).status).toBe(200);
+    sendNotification.mockClear();
+    sendNotification.mockImplementationOnce(() => new Promise(() => {}));
+    as("you");
+    expect((await outings.POST(req({ title: "Slow", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200); // a timeout here means the route waited
+    expect(sendNotification).toHaveBeenCalledTimes(1);
+    as("kenji");
+    await push.DELETE(req(), ctx());
   });
 
   it("still answers when the push service fails", async () => {

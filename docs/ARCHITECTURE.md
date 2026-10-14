@@ -134,7 +134,7 @@ Settled in the 1.1 design and built:
 - **What is sent**: the person's name and the group's name, never a plan's title, place or time, because the text passes through the browser maker's push server.
 - **A device is a session.** A subscription belongs to the session that made it, so signing out (or "Sign out other devices", or the 180-day expiry) removes it.
 - **Keys**: the VAPID pair is made on first use and kept in `push_key`, so nothing needs configuring and a backup carries it. Losing it only means every device has to turn the switch on again.
-- **Sending** (`push.ts`: `notifyProposed`, `notifyDeleted`): the `web-push` package, started by the route and not awaited; the lookups run first in the same step, inside the same catch, so nothing in it can fail the request, one request per device with a 24-hour time to live, no retries; a 404 or 410 from the push service deletes that subscription, any other failure is logged by status code only (the address works as a secret). `deleteOuting` returns who had said yes, collected before their answers go with the plan. The push contact is `CAFECITO_URL` when it is HTTPS.
+- **Sending** (`push.ts`: `notifyProposed`, `notifyDeleted`): the `web-push` package, started by the route and not awaited; the lookups run first in the same step, inside the same catch, so nothing in it can fail the request, one request per device with a 24-hour time to live, no retries; a 404 or 410 from the push service deletes that subscription, any other failure is logged by status code only (the address works as a secret). `deleteOuting` returns who had said yes, collected before their answers go with the plan. The push contact is `CAFECITO_URL` when it is HTTPS. A member can cause at most 10 notifications an hour (a proposal or a deletion each count once, however many devices it reaches; counted in memory, so a restart resets it), and an event with nobody to tell does not count; past that the plan still works but nothing is pushed, and one line is logged.
 
 ### Auth
 
@@ -152,7 +152,7 @@ The invite link is the credential: opening it asks for a name and sets a session
 - **Privacy.** Every member sees every other member's free/maybe pattern. "Busy" never carries a reason. State this in the UI when joining.
 - **Whole-group writes** are gone: `updateGroup` sends only the slot size, `updateMember` sends only changed fields and override quanta.
 - **Sessions** are random 256-bit tokens in an httpOnly cookie; only the hash is stored. Their last use is recorded at most daily, which also renews the cookie.
-- **Rate limits are in memory** and keyed on the last `X-Forwarded-For` entry, which is trustworthy behind exactly one reverse proxy (the documented setup).
+- **Rate limits are in memory** (this includes the 10 notifications an hour per member) and keyed on the last `X-Forwarded-For` entry, which is trustworthy behind exactly one reverse proxy (the documented setup).
 - **Recovery emails are not verified** when set; a link goes to whoever reads that mailbox. Setting someone else's address only lets them into your own account.
 - **Create group is open** to anyone who can reach the server (rate-limited). The deployment guide shows how to close it in the proxy; an "allow new groups" switch is not built.
 - **Demo mode** (`CAFECITO_DEMO=1`) seeds sessions with public tokens. Development only.

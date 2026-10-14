@@ -74,7 +74,7 @@ Brings together four features from the earlier plan. Events and the wishlist are
 #### Notifications: built (two kinds)
 Design settled (see [architecture](ARCHITECTURE.md#notifications)): web push only, two triggers (someone proposed a plan; a plan you said yes to was deleted), one on/off switch per device, name-only messages.
 - ✅ **Devices can turn notifications on or off** in Settings: service worker, web manifest, subscriptions stored per session, the server's push key made on first use.
-- ✅ **Sent** to everyone else's devices when someone proposes a plan, and to the members who said yes when a plan is deleted (not to the person who did it). The text is the person's name and the group's name, never the plan; delivery is in the background with no retries, and a device the push service reports as gone is forgotten.
+- ✅ **Sent** to everyone else's devices when someone proposes a plan, and to the members who said yes when a plan is deleted (not to the person who did it). The text is the person's name and the group's name, never the plan; delivery is in the background with no retries, and a device the push service reports as gone is forgotten; one member can cause at most 10 notifications an hour.
 - Not built: "a new window where everyone is free", a weekly reminder, and muting each type separately.
 
 #### Café and restaurant wishlist: built

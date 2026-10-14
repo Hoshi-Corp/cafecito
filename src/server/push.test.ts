@@ -4,6 +4,7 @@ import { openDb } from "./db";
 import { deleteMe, exportMe, signOutOthers } from "./account";
 import { HttpError, hash, removeMember, startSession } from "./groups";
 import { MAX_DEVICES, notifyDeleted, notifyProposed, publicKey, pushState, subscribePush, unsubscribePush } from "./push";
+import { clearLimits } from "./limit";
 import { seed } from "./seed";
 
 vi.mock("web-push", async (original) => {
@@ -15,6 +16,7 @@ afterEach(() => {
   sendNotification.mockClear();
   sendNotification.mockReset();
   vi.restoreAllMocks();
+  clearLimits(); // the hourly limit is shared by the whole file
 });
 
 const fresh = () => {
@@ -189,17 +191,26 @@ describe("sending", () => {
     expect(log).toHaveBeenCalledTimes(2);
   });
 
-  it("stops after 10 pushes an hour from one member, so a propose and delete loop cannot buzz everyone", async () => {
+  it("stops after 10 notifications an hour from one member, so a propose and delete loop cannot buzz everyone, and says so in the log", async () => {
     const db = withDevices();
-    // Kenji has no device of his own, so each push goes to the 4 others. The counter is shared by the whole file, hence a member no other test uses.
-    for (let i = 0; i < 10; i++) await notifyProposed(db, "demo", "kenji");
-    expect(sendNotification).toHaveBeenCalledTimes(10 * 4);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (let i = 0; i < 10; i++) await notifyProposed(db, "demo", "you"); // each reaches the 3 devices of the others
+    expect(sendNotification).toHaveBeenCalledTimes(10 * 3);
     sendNotification.mockClear();
-    await notifyProposed(db, "demo", "kenji");
-    await notifyDeleted(db, "kenji", ["camille"]);
+    await notifyProposed(db, "demo", "you");
+    await notifyDeleted(db, "you", ["camille"]);
     expect(sendNotification).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(2);
     await notifyProposed(db, "demo", "sofia"); // someone else is not held back by it
     expect(sendNotification).toHaveBeenCalled();
+  });
+
+  it("does not use up the hourly limit when nobody has notifications on", async () => {
+    const db = fresh(); // no devices
+    for (let i = 0; i < 12; i++) await notifyProposed(db, "demo", "you");
+    subscribePush(db, "camille", device(db, "camille", "c"), sub(1));
+    await notifyProposed(db, "demo", "you");
+    expect(sendNotification).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the device and does not throw on other failures, and logs without the address", async () => {
