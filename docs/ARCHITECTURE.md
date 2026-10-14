@@ -27,17 +27,18 @@ Cafecito answers one question for a group of friends: **when can we all get toge
 ## Code map
 
 ```
-src/lib/types.ts          Member, Group, Mark, SLOT_OPTIONS
+src/lib/types.ts          Member, Group, Outing, Mark, SLOT_OPTIONS
 src/lib/availability.ts   quanta math, markAt/slotMark, summarize, bestWindows, paint*
 src/lib/store.ts          client store: useGroup / updateGroup / updateMember, optimistic, per-member writes, SSE listener
 src/server/               SQLite (db, schema + migrations), validated own-rows-only writes, sessions and invites (groups.ts),
                           my account: devices, export, deletion, sign-in links (account.ts), in-memory pub/sub (events.ts),
-                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), opt-in demo data (seed.ts)
-src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, invites, members, events),
+                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), opt-in demo data (seed.ts)
+src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, invites, members, outings, events),
                           invites/[token] (info, join), sign-in (+ link)
 src/app/join/[token]      join screen
 src/app/sign-in, [token]  where a personal link (`/sign-in#token`) or an emailed one (`/sign-in/token`) lands
 src/components/GroupApp   screens: typical week, dates, group heatmap, best times
+src/components/Outings   propose a best time, the plans list, RSVP
 src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
 src/components/Account    my account: recovery email, devices, export, delete
 src/components/Manage     owner: invite links, remove people
@@ -67,9 +68,11 @@ override(member_id, start_q, end_q, mark)                                      -
 invite(id, token_hash, group_id, expires_at, max_uses, uses, revoked_at)
 session(token_hash, member_id, device, created_at, last_seen)                  -- deleted with the member
 sign_in_link(token_hash, member_id, expires_at)                                -- single use, 30 minutes
+outing(id, group_id, title, place, start_q, end_q, created_by)                 -- created_by is set to null when that member leaves
+rsvp(outing_id, member_id, answer)                                             -- answer: y | m | n; deleted with the outing or the member
 ```
 
-A write to overrides rewrites only the ranges around the change, merging equal neighbours. A daily prune deletes overrides that ended more than a week ago, sessions unused for 180 days and expired sign-in links.
+A write to overrides rewrites only the ranges around the change, merging equal neighbours. A daily prune deletes overrides and plans that ended more than a week ago, sessions unused for 180 days and expired sign-in links.
 
 ### API
 
@@ -93,6 +96,9 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `GET /api/sign-in` | Whether email sign-in is on |
 | `POST /api/sign-in` | Email a sign-in link to a recovery address |
 | `POST /api/sign-in/link` | Sign in with a personal or emailed link (token in the body, not the URL); creates a session |
+| `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; the proposer is marked yes |
+| `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
+| `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner) |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
 Writes are **per member and own-rows-only**. No call replaces the whole group.

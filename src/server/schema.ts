@@ -74,4 +74,23 @@ export const MIGRATIONS = [
   ALTER TABLE member ADD COLUMN access_hash TEXT;
   CREATE UNIQUE INDEX member_access_hash ON member(access_hash);
   `,
+  // 1.1: outings (a slot the group proposes to meet in) and each member's RSVP.
+  `
+  CREATE TABLE outing (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL REFERENCES "group"(id),
+    title TEXT NOT NULL,
+    place TEXT NOT NULL DEFAULT '',
+    start_q INTEGER NOT NULL,
+    end_q INTEGER NOT NULL CHECK (end_q > start_q),
+    created_by TEXT REFERENCES member(id) ON DELETE SET NULL
+  );
+  CREATE INDEX outing_group ON outing(group_id, start_q);
+  CREATE TABLE rsvp (
+    outing_id TEXT NOT NULL REFERENCES outing(id) ON DELETE CASCADE,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    answer TEXT NOT NULL CHECK (answer IN ('y', 'm', 'n')),
+    PRIMARY KEY (outing_id, member_id)
+  ) WITHOUT ROWID;
+  `,
 ];

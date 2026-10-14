@@ -21,6 +21,9 @@ const overrides = await import("@/app/api/groups/[id]/me/overrides/route");
 const invites = await import("@/app/api/groups/[id]/invites/route");
 const invite = await import("@/app/api/groups/[id]/invites/[inviteId]/route");
 const member = await import("@/app/api/groups/[id]/members/[memberId]/route");
+const outings = await import("@/app/api/groups/[id]/outings/route");
+const outingRsvp = await import("@/app/api/groups/[id]/outings/[outingId]/rsvp/route");
+const outingOne = await import("@/app/api/groups/[id]/outings/[outingId]/route");
 const events = await import("@/app/api/groups/[id]/events/route");
 const join = await import("@/app/api/invites/[token]/route");
 const accessLink = await import("@/app/api/groups/[id]/me/access-link/route");
@@ -31,6 +34,7 @@ const signInLink = await import("@/app/api/sign-in/link/route");
 const { handle, SESSION_COOKIE } = await import("./http");
 const { subscribe } = await import("./events");
 const { getDb } = await import("./db");
+const { bestWindows, isSetUp } = await import("@/lib/availability");
 const { DAY_MS, startSession } = await import("./groups");
 
 const ctx = <T extends object>(params: T & { id?: string } = {} as T) => ({ params: Promise.resolve({ id: "me", ...params }) });
@@ -89,6 +93,29 @@ describe("API routes", () => {
 
   it("lets unexpected errors through instead of hiding them as a JSON error", async () => {
     await expect(handle(ctx().params, () => { throw new Error("boom"); })).rejects.toThrow("boom");
+  });
+});
+
+describe("outing routes", () => {
+  it("needs a session and JSON, then proposes, answers and deletes", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const body = { title: "Brunch", startQ: w.startQ, endQ: w.startQ + 4 };
+    const one = (outingId: string) => ctx({ outingId });
+    jar.clear();
+    expect((await outings.POST(req(body), ctx())).status).toBe(401);
+    as("you");
+    expect((await outings.POST(req("x", "text/plain"), ctx())).status).toBe(415);
+    expect((await outings.POST(req(body), ctx())).status).toBe(200);
+    expect((await outings.POST(req({ ...body, startQ: q + 15 * 96, endQ: q + 15 * 96 + 4 }), ctx())).status).toBe(409);
+    const { id } = getDb().prepare(`SELECT id FROM outing`).get() as { id: string };
+    expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200);
+    expect((await outingRsvp.PUT(req({ answer: "?" }), one(id))).status).toBe(400);
+    as("camille");
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(403);
+    as("you");
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(200);
   });
 });
 

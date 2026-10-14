@@ -52,3 +52,18 @@ export interface GroupEvent {
   /** Anything bigger (settings, people joining or leaving): load the group again. */
   reload?: true;
 }
+
+export type Rsvp = "y" | "m" | "n";
+
+/** A slot the group proposes to meet in. Times are UTC quanta, like overrides. */
+export interface Outing {
+  id: string;
+  title: string;
+  place: string;
+  startQ: number;
+  endQ: number;
+  /** Who proposed it; null once they left the group. */
+  createdBy: string | null;
+  /** Answers by member id; members who have not answered are absent. */
+  rsvps: Record<string, Rsvp>;
+}

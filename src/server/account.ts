@@ -71,6 +71,7 @@ export function deleteMe(db: Db, groupId: string, memberId: string) {
     ).run({ g: groupId });
     if (!db.prepare(`SELECT 1 FROM member WHERE group_id = ?`).get(groupId)) {
       db.prepare(`DELETE FROM invite WHERE group_id = ?`).run(groupId);
+      db.prepare(`DELETE FROM outing WHERE group_id = ?`).run(groupId);
       db.prepare(`DELETE FROM "group" WHERE id = ?`).run(groupId);
     }
   })();
