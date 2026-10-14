@@ -93,4 +93,24 @@ export const MIGRATIONS = [
     PRIMARY KEY (outing_id, member_id)
   ) WITHOUT ROWID;
   `,
+  // 1.1: the group's café and restaurant wishlist, with who wants to go.
+  `
+  CREATE TABLE place (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL REFERENCES "group"(id),
+    name TEXT NOT NULL,
+    link TEXT NOT NULL DEFAULT '',
+    map_link TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    suggested_by TEXT REFERENCES member(id) ON DELETE SET NULL,
+    been_there INTEGER NOT NULL DEFAULT 0 CHECK (been_there IN (0, 1)),
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX place_group ON place(group_id);
+  CREATE TABLE place_vote (
+    place_id TEXT NOT NULL REFERENCES place(id) ON DELETE CASCADE,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    PRIMARY KEY (place_id, member_id)
+  ) WITHOUT ROWID;
+  `,
 ];

@@ -136,6 +136,13 @@ export function normalizeEmail(email: unknown): string | null {
   return e;
 }
 
+/** A trimmed string of at most `max` characters; "" when absent and not required. */
+export const cleanText = (v: unknown, max: number, required: boolean) => {
+  if (v === undefined && !required) return "";
+  if (typeof v !== "string" || v.length > max || (required && !v.trim())) throw bad("Invalid text");
+  return v.trim();
+};
+
 export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 

@@ -27,13 +27,13 @@ Cafecito answers one question for a group of friends: **when can we all get toge
 ## Code map
 
 ```
-src/lib/types.ts          Member, Group, Outing, Mark, SLOT_OPTIONS
+src/lib/types.ts          Member, Group, Outing, Place, Mark, SLOT_OPTIONS
 src/lib/availability.ts   quanta math, markAt/slotMark, summarize, bestWindows, paint*
 src/lib/store.ts          client store: useGroup / updateGroup / updateMember, optimistic, per-member writes, SSE listener
 src/server/               SQLite (db, schema + migrations), validated own-rows-only writes, sessions and invites (groups.ts),
                           my account: devices, export, deletion, sign-in links (account.ts), in-memory pub/sub (events.ts),
-                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), opt-in demo data (seed.ts)
-src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, invites, members, outings, events),
+                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), the wishlist (places.ts), opt-in demo data (seed.ts)
+src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, invites, members, outings, places, events),
                           invites/[token] (info, join), sign-in (+ link)
 src/app/join/[token]      join screen
 src/app/sign-in, [token]  where a personal link (`/sign-in#token`) or an emailed one (`/sign-in/token`) lands
@@ -70,6 +70,8 @@ session(token_hash, member_id, device, created_at, last_seen)                  -
 sign_in_link(token_hash, member_id, expires_at)                                -- single use, 30 minutes
 outing(id, group_id, title, place, start_q, end_q, created_by)                 -- created_by is set to null when that member leaves
 rsvp(outing_id, member_id, answer)                                             -- answer: y | m | n; deleted with the outing or the member
+place(id, group_id, name, link, map_link, notes, suggested_by, been_there, created_at)  -- suggested_by is set to null when that member leaves
+place_vote(place_id, member_id)                                                -- one per member and place; deleted with the place or the member
 ```
 
 A write to overrides rewrites only the ranges around the change, merging equal neighbours. A daily prune deletes overrides and plans that ended more than a week ago, sessions unused for 180 days and expired sign-in links.
@@ -99,6 +101,10 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id` |
 | `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
 | `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there |
+| `POST /api/groups/:id/places` | Add a café or restaurant to the wishlist (name, optional website and map link, notes; http(s) links only; up to 100 places per group); the places come with `GET /api/groups/:id` |
+| `PATCH /api/groups/:id/places/:placeId` | Edit the details (whoever suggested it, or the owner), or mark it as visited (anyone in the group) |
+| `PUT`, `DELETE /api/groups/:id/places/:placeId/vote` | Add or take back my own "I want to go" vote |
+| `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes go with it |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
 Writes are **per member and own-rows-only**. No call replaces the whole group. The owner can also act on other members (remove them, replace their personal link), and deleting a plan adds one more: it clears its proposer's override marks for that plan's time (`deleteOuting`), so when the owner deletes someone else's plan, that member's availability changes. It only removes marks, never sets any.

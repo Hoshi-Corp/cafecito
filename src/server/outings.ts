@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db";
-import { HttpError, assertOwner, bad, isObject, loadGroup, patchOverrides } from "./groups";
+import { HttpError, assertOwner, bad, cleanText, isObject, loadGroup, patchOverrides } from "./groups";
 import { MAX_OUTING_QUANTA, QUANTA_PER_DAY, bestWindows, isSetUp, toQuantum } from "../lib/availability";
 import type { Outing, Rsvp } from "../lib/types";
 
@@ -8,12 +8,6 @@ export const MAX_OUTINGS = 50;
 
 const assertNotOver = (endQ: number, now: number) => {
   if (endQ <= toQuantum(now)) throw bad("That time has passed");
-};
-
-const text = (v: unknown, max: number, required: boolean) => {
-  if (v === undefined && !required) return "";
-  if (typeof v !== "string" || v.length > max || (required && !v.trim())) throw bad("Invalid text");
-  return v.trim();
 };
 
 /** Marks the plan's time busy for the member, so the group stops seeing them as free then. */
@@ -47,7 +41,7 @@ export function createOuting(db: Db, groupId: string, memberId: string, body: un
   const id = randomUUID();
   db.transaction(() => {
     db.prepare(`INSERT INTO outing (id, group_id, title, place, start_q, end_q, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      id, groupId, text(body.title, 80, true), text(body.place, 120, false), startQ, endQ, memberId,
+      id, groupId, cleanText(body.title, 80, true), cleanText(body.place, 120, false), startQ, endQ, memberId,
     );
     // Whoever proposes it is going, so that time is busy for them, as if they had answered yes with "mark busy".
     db.prepare(`INSERT INTO rsvp (outing_id, member_id, answer) VALUES (?, ?, 'y')`).run(id, memberId);

@@ -24,6 +24,9 @@ const member = await import("@/app/api/groups/[id]/members/[memberId]/route");
 const outings = await import("@/app/api/groups/[id]/outings/route");
 const outingRsvp = await import("@/app/api/groups/[id]/outings/[outingId]/rsvp/route");
 const outingOne = await import("@/app/api/groups/[id]/outings/[outingId]/route");
+const places = await import("@/app/api/groups/[id]/places/route");
+const placeOne = await import("@/app/api/groups/[id]/places/[placeId]/route");
+const placeVote = await import("@/app/api/groups/[id]/places/[placeId]/vote/route");
 const events = await import("@/app/api/groups/[id]/events/route");
 const join = await import("@/app/api/invites/[token]/route");
 const accessLink = await import("@/app/api/groups/[id]/me/access-link/route");
@@ -116,6 +119,29 @@ describe("outing routes", () => {
     expect((await outingOne.DELETE(req(), one(id))).status).toBe(403);
     as("you");
     expect((await outingOne.DELETE(req(), one(id))).status).toBe(200);
+  });
+});
+
+describe("wishlist routes", () => {
+  it("needs a session and JSON, then adds, votes, edits and deletes, and the group carries the places", async () => {
+    const one = (placeId: string) => ctx({ placeId });
+    jar.clear();
+    expect((await places.POST(req({ name: "Café X" }), ctx())).status).toBe(401);
+    as("camille");
+    expect((await places.POST(req("x", "text/plain"), ctx())).status).toBe(415);
+    expect((await places.POST(req({ name: "Café X", link: "javascript:1" }), ctx())).status).toBe(400);
+    expect((await places.POST(req({ name: "Café X", link: "https://x.example" }), ctx())).status).toBe(200);
+    const { id } = getDb().prepare(`SELECT id FROM place`).get() as { id: string };
+    expect((await placeVote.PUT(req(), one(id))).status).toBe(200);
+    expect((await get()).places).toMatchObject([{ id, name: "Café X", suggestedBy: "camille", votes: ["camille"] }]);
+    as("diego");
+    expect((await placeOne.PATCH(req({ beenThere: true }), one(id))).status).toBe(200);
+    expect((await placeOne.PATCH(req({ name: "Mine now" }), one(id))).status).toBe(403);
+    expect((await placeOne.DELETE(req(), one(id))).status).toBe(403);
+    as("you");
+    expect((await placeVote.DELETE(req(), one(id))).status).toBe(200);
+    expect((await placeOne.DELETE(req(), one(id))).status).toBe(200);
+    expect((await get()).places).toEqual([]);
   });
 });
 
