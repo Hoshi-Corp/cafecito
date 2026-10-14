@@ -189,6 +189,19 @@ describe("sending", () => {
     expect(log).toHaveBeenCalledTimes(2);
   });
 
+  it("stops after 10 pushes an hour from one member, so a propose and delete loop cannot buzz everyone", async () => {
+    const db = withDevices();
+    // Kenji has no device of his own, so each push goes to the 4 others. The counter is shared by the whole file, hence a member no other test uses.
+    for (let i = 0; i < 10; i++) await notifyProposed(db, "demo", "kenji");
+    expect(sendNotification).toHaveBeenCalledTimes(10 * 4);
+    sendNotification.mockClear();
+    await notifyProposed(db, "demo", "kenji");
+    await notifyDeleted(db, "kenji", ["camille"]);
+    expect(sendNotification).not.toHaveBeenCalled();
+    await notifyProposed(db, "demo", "sofia"); // someone else is not held back by it
+    expect(sendNotification).toHaveBeenCalled();
+  });
+
   it("keeps the device and does not throw on other failures, and logs without the address", async () => {
     const db = withDevices();
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
