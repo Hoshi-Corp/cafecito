@@ -136,7 +136,7 @@ export function normalizeEmail(email: unknown): string | null {
   return e;
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
+export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Replace the caller's own profile fields (and recovery email). Only the member's own row is ever touched. */
@@ -221,6 +221,7 @@ export function toRanges(marks: Map<number, OverrideMark>) {
 /** Daily housekeeping: drops overrides that ended over a week ago (past weeks show the typical week), idle sessions and used-up sign-in links. */
 export function prune(db: Db, now = Date.now()) {
   db.prepare(`DELETE FROM override WHERE end_q < ?`).run(toQuantum(now - 8 * DAY_MS));
+  db.prepare(`DELETE FROM outing WHERE end_q < ?`).run(toQuantum(now - 8 * DAY_MS));
   db.prepare(`DELETE FROM session WHERE last_seen <= ?`).run(now - SESSION_IDLE_MS);
   db.prepare(`DELETE FROM sign_in_link WHERE expires_at <= ?`).run(now);
 }
