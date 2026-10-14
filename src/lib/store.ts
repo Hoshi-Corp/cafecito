@@ -189,11 +189,11 @@ export function updateMember(id: string, change: (member: Member) => Member) {
   if (Object.keys(setMarks).length || remove.length) send("/me/overrides", "PATCH", { set: setMarks, remove });
 }
 
-// Outings are not painted optimistically. The server's reload event brings the new list to every browser, but not if live
-// updates are blocked, so a saved write also loads the group; each resolves to an error message to show, or null.
+// Outings are not painted optimistically. The server's reload event brings the new list to every browser; with the live
+// stream down (say a proxy blocks it) a saved write loads the group itself. Each resolves to an error message to show, or null.
 async function outingWrite(...args: Parameters<typeof send>) {
   const error = await send(...args);
-  if (!error) await load();
+  if (!error && !connected) await load();
   return error;
 }
 

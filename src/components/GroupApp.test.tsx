@@ -342,6 +342,18 @@ describe("outings", () => {
     await vi.waitFor(() => expect(screen.queryByLabelText("What")).toBeNull());
   });
 
+  it("sends a proposal once however often Propose is pressed", async () => {
+    await open();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
+    const form = screen.getByLabelText("What").closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(await sent(1)).toHaveLength(1);
+    await vi.waitFor(() => expect(screen.queryByLabelText("What")).toBeNull());
+    expect(writes).toHaveLength(1);
+  });
+
   it("keeps the form open and shows the server's reason when a proposal is refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     await open();

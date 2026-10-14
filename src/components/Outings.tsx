@@ -31,6 +31,7 @@ export function ProposeForm({
   const [title, setTitle] = useState("");
   const [place, setPlace] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const slot = { startQ: w.startQ, endQ: Math.min(w.endQ, w.startQ + MAX_OUTING_QUANTA) };
   const field = "rounded-md border border-line bg-cell px-2 py-1";
   return (
@@ -38,7 +39,10 @@ export function ProposeForm({
       className="flex flex-col gap-2 rounded-xl border border-line bg-card p-3 text-sm"
       onSubmit={async (e) => {
         e.preventDefault();
+        if (sending) return;
+        setSending(true);
         const refused = await proposeOuting({ title: title.trim(), place, ...slot });
+        setSending(false);
         if (refused) setError(refused);
         else onDone();
       }}
@@ -58,7 +62,9 @@ export function ProposeForm({
         </p>
       )}
       <div className="flex gap-2">
-        <button className="rounded-md bg-foreground px-3 py-1 font-medium text-background">Propose</button>
+        <button disabled={sending} className="rounded-md bg-foreground px-3 py-1 font-medium text-background disabled:opacity-50">
+          Propose
+        </button>
         <button type="button" className="rounded-md border border-line px-3 py-1" onClick={onDone}>
           Cancel
         </button>
