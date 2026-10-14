@@ -16,6 +16,10 @@ const text = (v: unknown, max: number, required: boolean) => {
   return v.trim();
 };
 
+/** Marks the plan's time busy for the member, so the group stops seeing them as free then. */
+const markBusyFor = (db: Db, memberId: string, startQ: number, endQ: number) =>
+  patchOverrides(db, memberId, { set: Object.fromEntries(Array.from({ length: endQ - startQ }, (_, i) => [startQ + i, "b"])) });
+
 export function listOutings(db: Db, groupId: string): Outing[] {
   const rows = db
     .prepare(`SELECT id, title, place, start_q startQ, end_q endQ, created_by createdBy FROM outing WHERE group_id = ? ORDER BY start_q`)
@@ -45,8 +49,9 @@ export function createOuting(db: Db, groupId: string, memberId: string, body: un
     db.prepare(`INSERT INTO outing (id, group_id, title, place, start_q, end_q, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
       id, groupId, text(body.title, 80, true), text(body.place, 120, false), startQ, endQ, memberId,
     );
-    // Whoever proposes it is going.
+    // Whoever proposes it is going, so that time is busy for them, as if they had answered yes with "mark busy".
     db.prepare(`INSERT INTO rsvp (outing_id, member_id, answer) VALUES (?, ?, 'y')`).run(id, memberId);
+    markBusyFor(db, memberId, startQ, endQ);
   })();
   return { id };
 }
@@ -65,14 +70,21 @@ export function answerOuting(db: Db, groupId: string, memberId: string, outingId
   db.transaction(() => {
     db.prepare(`INSERT INTO rsvp (outing_id, member_id, answer) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET answer = excluded.answer`).run(outingId, memberId, answer);
     if (answer === "y" && markBusy === true)
-      patchOverrides(db, memberId, { set: Object.fromEntries(Array.from({ length: o.endQ - o.startQ }, (_, i) => [o.startQ + i, "b"])) });
+      markBusyFor(db, memberId, o.startQ, o.endQ);
   })();
 }
 
 /** The person who proposed it, or the owner. */
 export function deleteOuting(db: Db, groupId: string, memberId: string, outingId: string) {
-  const o = db.prepare(`SELECT created_by createdBy FROM outing WHERE id = ? AND group_id = ?`).get(outingId, groupId) as { createdBy: string | null } | undefined;
+  const o = db.prepare(`SELECT created_by createdBy, start_q startQ, end_q endQ FROM outing WHERE id = ? AND group_id = ?`).get(outingId, groupId) as
+    | { createdBy: string | null; startQ: number; endQ: number }
+    | undefined;
   if (!o) throw new HttpError(404, "No such outing");
   if (o.createdBy !== memberId) assertOwner(db, memberId);
-  db.prepare(`DELETE FROM outing WHERE id = ?`).run(outingId);
+  db.transaction(() => {
+    db.prepare(`DELETE FROM outing WHERE id = ?`).run(outingId);
+    // Proposing marked the author busy; give them their typical week back.
+    // shortcut: clears every mark in that range, also one from another plan or by hand; track marks per plan if that bites.
+    if (o.createdBy) patchOverrides(db, o.createdBy, { remove: Array.from({ length: o.endQ - o.startQ }, (_, i) => o.startQ + i) });
+  })();
 }
