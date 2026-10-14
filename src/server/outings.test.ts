@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import { deleteMe } from "./account";
-import { HttpError, loadGroup, prune, removeMember } from "./groups";
-import { answerOuting, createOuting, deleteOuting, listOutings } from "./outings";
+import { HttpError, createGroup, loadGroup, prune, removeMember } from "./groups";
+import { MAX_OUTINGS, answerOuting, createOuting, deleteOuting, listOutings } from "./outings";
 import { seed } from "./seed";
 import { toQuantum } from "../lib/availability";
 
@@ -28,8 +28,8 @@ describe("outings", () => {
   it("creates, lists and answers", () => {
     const db = fresh();
     const id = make(db);
-    answerOuting(db, "demo", "diego", id, { answer: "y" });
-    answerOuting(db, "demo", "diego", id, { answer: "m" });
+    answerOuting(db, "demo", "diego", id, { answer: "y" }, NOW);
+    answerOuting(db, "demo", "diego", id, { answer: "m" }, NOW);
     expect(listOutings(db, "demo")).toEqual([
       { id, title: "Brunch", place: "Café X", startQ: Q + 100, endQ: Q + 106, createdBy: "camille", rsvps: { diego: "m" } },
     ]);
@@ -47,9 +47,9 @@ describe("outings", () => {
   it("marks the time busy once, only when asked", () => {
     const db = fresh();
     const id = make(db);
-    answerOuting(db, "demo", "diego", id, { answer: "y" });
+    answerOuting(db, "demo", "diego", id, { answer: "y" }, NOW);
     expect(loadGroup(db, "demo", "you").members.find((m) => m.id === "diego")!.overrides).toEqual({});
-    answerOuting(db, "demo", "diego", id, { answer: "y", markBusy: true });
+    answerOuting(db, "demo", "diego", id, { answer: "y", markBusy: true }, NOW);
     expect(Object.keys(loadGroup(db, "demo", "you").members.find((m) => m.id === "diego")!.overrides)).toHaveLength(6);
   });
 
@@ -66,7 +66,7 @@ describe("outings", () => {
   it("survives its proposer or a responder leaving, and goes with the group", () => {
     const db = fresh();
     const id = make(db);
-    answerOuting(db, "demo", "diego", id, { answer: "y" });
+    answerOuting(db, "demo", "diego", id, { answer: "y" }, NOW);
     removeMember(db, "demo", "you", "camille");
     removeMember(db, "demo", "you", "diego");
     expect(listOutings(db, "demo")).toMatchObject([{ createdBy: null, rsvps: {} }]);
@@ -79,5 +79,26 @@ describe("outings", () => {
     make(db);
     prune(db, NOW + 20 * 86_400_000);
     expect(listOutings(db, "demo")).toEqual([]);
+  });
+
+  it("caps the plans a group can have", () => {
+    const db = fresh();
+    for (let i = 0; i < MAX_OUTINGS; i++) make(db);
+    expect(status(() => make(db))).toBe(409);
+  });
+
+  it("refuses an answer once the outing is over", () => {
+    const db = fresh();
+    const id = make(db);
+    expect(status(() => answerOuting(db, "demo", "you", id, { answer: "y" }, NOW + 2 * 86_400_000))).toBe(400);
+  });
+
+  it("never reaches an outing of another group", () => {
+    const db = fresh();
+    const other = createGroup(db, { groupName: "Other", name: "Zed" });
+    const id = createOuting(db, other.groupId, other.memberId, { title: "x", startQ: Q + 100, endQ: Q + 104 }, NOW).id;
+    expect(status(() => answerOuting(db, "demo", "you", id, { answer: "y" }, NOW))).toBe(404);
+    expect(status(() => deleteOuting(db, "demo", "you", id))).toBe(404);
+    expect(listOutings(db, other.groupId)).toHaveLength(1);
   });
 });

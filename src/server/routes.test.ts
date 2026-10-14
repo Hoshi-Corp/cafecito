@@ -21,6 +21,9 @@ const overrides = await import("@/app/api/groups/[id]/me/overrides/route");
 const invites = await import("@/app/api/groups/[id]/invites/route");
 const invite = await import("@/app/api/groups/[id]/invites/[inviteId]/route");
 const member = await import("@/app/api/groups/[id]/members/[memberId]/route");
+const outings = await import("@/app/api/groups/[id]/outings/route");
+const outingRsvp = await import("@/app/api/groups/[id]/outings/[outingId]/rsvp/route");
+const outingOne = await import("@/app/api/groups/[id]/outings/[outingId]/route");
 const events = await import("@/app/api/groups/[id]/events/route");
 const join = await import("@/app/api/invites/[token]/route");
 const accessLink = await import("@/app/api/groups/[id]/me/access-link/route");
@@ -89,6 +92,25 @@ describe("API routes", () => {
 
   it("lets unexpected errors through instead of hiding them as a JSON error", async () => {
     await expect(handle(ctx().params, () => { throw new Error("boom"); })).rejects.toThrow("boom");
+  });
+});
+
+describe("outing routes", () => {
+  it("needs a session and JSON, then proposes, answers and deletes", async () => {
+    const body = { title: "Brunch", startQ: Date.now() / 900_000 + 100, endQ: Date.now() / 900_000 + 104 };
+    const one = (outingId: string) => ctx({ outingId });
+    jar.clear();
+    expect((await outings.POST(req(body), ctx())).status).toBe(401);
+    as("you");
+    expect((await outings.POST(req("x", "text/plain"), ctx())).status).toBe(415);
+    expect((await outings.POST(req({ ...body, startQ: Math.floor(body.startQ), endQ: Math.floor(body.endQ) }), ctx())).status).toBe(200);
+    const [{ id }] = await (await outings.GET(req(), ctx())).json();
+    expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200);
+    expect((await outingRsvp.PUT(req({ answer: "?" }), one(id))).status).toBe(400);
+    as("camille");
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(403);
+    as("you");
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(200);
   });
 });
 
