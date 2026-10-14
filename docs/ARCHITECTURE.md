@@ -96,7 +96,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `GET /api/sign-in` | Whether email sign-in is on |
 | `POST /api/sign-in` | Email a sign-in link to a recovery address |
 | `POST /api/sign-in/link` | Sign in with a personal or emailed link (token in the body, not the URL); creates a session |
-| `POST /api/groups/:id/outings` | Propose a time with a title and place (up to 50 plans per group) |
+| `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; the proposer is marked yes |
 | `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
 | `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner) |
 | `GET /api/groups/:id/events` | SSE stream of changes |

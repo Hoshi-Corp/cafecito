@@ -8,6 +8,8 @@ export const QUANTUM_MINUTES = 15;
 export const QUANTUM_MS = QUANTUM_MINUTES * 60_000;
 export const QUANTA_PER_DAY = 96;
 export const QUANTA_PER_WEEK = 7 * QUANTA_PER_DAY;
+// A plan covers at most this long (4 hours); the group screen offers best windows, clipped to it.
+export const MAX_OUTING_QUANTA = 16;
 export const EMPTY_PATTERN = ".".repeat(QUANTA_PER_WEEK);
 
 export const toQuantum = (ms: number) => Math.floor(ms / QUANTUM_MS);

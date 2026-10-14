@@ -34,6 +34,7 @@ const signInLink = await import("@/app/api/sign-in/link/route");
 const { handle, SESSION_COOKIE } = await import("./http");
 const { subscribe } = await import("./events");
 const { getDb } = await import("./db");
+const { bestWindows, isSetUp } = await import("@/lib/availability");
 const { DAY_MS, startSession } = await import("./groups");
 
 const ctx = <T extends object>(params: T & { id?: string } = {} as T) => ({ params: Promise.resolve({ id: "me", ...params }) });
@@ -97,13 +98,17 @@ describe("API routes", () => {
 
 describe("outing routes", () => {
   it("needs a session and JSON, then proposes, answers and deletes", async () => {
-    const body = { title: "Brunch", startQ: Date.now() / 900_000 + 100, endQ: Date.now() / 900_000 + 104 };
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const body = { title: "Brunch", startQ: w.startQ, endQ: w.startQ + 4 };
     const one = (outingId: string) => ctx({ outingId });
     jar.clear();
     expect((await outings.POST(req(body), ctx())).status).toBe(401);
     as("you");
     expect((await outings.POST(req("x", "text/plain"), ctx())).status).toBe(415);
-    expect((await outings.POST(req({ ...body, startQ: Math.floor(body.startQ), endQ: Math.floor(body.endQ) }), ctx())).status).toBe(200);
+    expect((await outings.POST(req(body), ctx())).status).toBe(200);
+    expect((await outings.POST(req({ ...body, startQ: q + 15 * 96, endQ: q + 15 * 96 + 4 }), ctx())).status).toBe(409);
     const { id } = getDb().prepare(`SELECT id FROM outing`).get() as { id: string };
     expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200);
     expect((await outingRsvp.PUT(req({ answer: "?" }), one(id))).status).toBe(400);

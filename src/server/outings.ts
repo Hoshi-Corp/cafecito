@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db";
-import { HttpError, assertOwner, bad, isObject, patchOverrides } from "./groups";
-import { toQuantum } from "../lib/availability";
+import { HttpError, assertOwner, bad, isObject, loadGroup, patchOverrides } from "./groups";
+import { MAX_OUTING_QUANTA, QUANTA_PER_DAY, bestWindows, isSetUp, toQuantum } from "../lib/availability";
 import type { Outing, Rsvp } from "../lib/types";
 
-const MAX_OUTING_QUANTA = 7 * 96;
 export const MAX_OUTINGS = 50;
 
 const assertNotOver = (endQ: number, now: number) => {
@@ -33,12 +32,22 @@ export function createOuting(db: Db, groupId: string, memberId: string, body: un
   if (!Number.isSafeInteger(startQ) || !Number.isSafeInteger(endQ) || endQ <= startQ || endQ - startQ > MAX_OUTING_QUANTA)
     throw bad("Invalid time");
   assertNotOver(endQ, now);
+  // Only a time the group's best-times list could offer: the same windows the group screen shows, over the same two weeks.
+  const from = toQuantum(now) + 1;
+  const windows = bestWindows(loadGroup(db, groupId, memberId).members.filter(isSetUp), from, from + 14 * QUANTA_PER_DAY, {
+    limit: Infinity,
+  });
+  if (!windows.some((w) => w.startQ <= startQ && endQ <= w.endQ)) throw new HttpError(409, "That time is no longer free for the group");
   const { n } = db.prepare(`SELECT count(*) n FROM outing WHERE group_id = ?`).get(groupId) as { n: number };
   if (n >= MAX_OUTINGS) throw new HttpError(409, `A group can have ${MAX_OUTINGS} plans at a time`);
   const id = randomUUID();
-  db.prepare(`INSERT INTO outing (id, group_id, title, place, start_q, end_q, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    id, groupId, text(body.title, 80, true), text(body.place, 120, false), startQ, endQ, memberId,
-  );
+  db.transaction(() => {
+    db.prepare(`INSERT INTO outing (id, group_id, title, place, start_q, end_q, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      id, groupId, text(body.title, 80, true), text(body.place, 120, false), startQ, endQ, memberId,
+    );
+    // Whoever proposes it is going.
+    db.prepare(`INSERT INTO rsvp (outing_id, member_id, answer) VALUES (?, ?, 'y')`).run(id, memberId);
+  })();
   return { id };
 }
 

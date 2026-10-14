@@ -4,7 +4,7 @@ import { deleteMe } from "./account";
 import { HttpError, createGroup, loadGroup, prune, removeMember } from "./groups";
 import { MAX_OUTINGS, answerOuting, createOuting, deleteOuting, listOutings } from "./outings";
 import { seed } from "./seed";
-import { toQuantum } from "../lib/availability";
+import { QUANTA_PER_DAY, bestWindows, isSetUp, toQuantum } from "../lib/availability";
 
 const NOW = Date.UTC(2026, 9, 13);
 const Q = toQuantum(NOW);
@@ -21,8 +21,13 @@ const status = (fn: () => void) => {
   }
   return 0;
 };
+/** The first best window the group screen would offer at NOW, clipped to an hour. */
+const slot = (db: ReturnType<typeof fresh>) => {
+  const [w] = bestWindows(loadGroup(db, "demo", "you").members.filter(isSetUp), Q + 1, Q + 1 + 14 * QUANTA_PER_DAY);
+  return { startQ: w.startQ, endQ: w.startQ + 4 };
+};
 const make = (db: ReturnType<typeof fresh>, by = "camille") =>
-  createOuting(db, "demo", by, { title: " Brunch ", place: "Café X", startQ: Q + 100, endQ: Q + 106 }, NOW).id;
+  createOuting(db, "demo", by, { title: " Brunch ", place: "Café X", ...slot(db) }, NOW).id;
 
 describe("outings", () => {
   it("creates, lists and answers", () => {
@@ -31,17 +36,34 @@ describe("outings", () => {
     answerOuting(db, "demo", "diego", id, { answer: "y" }, NOW);
     answerOuting(db, "demo", "diego", id, { answer: "m" }, NOW);
     expect(listOutings(db, "demo")).toEqual([
-      { id, title: "Brunch", place: "Café X", startQ: Q + 100, endQ: Q + 106, createdBy: "camille", rsvps: { diego: "m" } },
+      { id, title: "Brunch", place: "Café X", ...slot(db), createdBy: "camille", rsvps: { camille: "y", diego: "m" } },
     ]);
   });
 
   it("validates input", () => {
     const db = fresh();
-    const bodies = [{ title: "", startQ: Q + 1, endQ: Q + 2 }, { title: "x", startQ: Q + 2, endQ: Q + 2 }, { title: "x", startQ: Q + 1, endQ: Q + 1000 }, { title: "x", startQ: Q - 9, endQ: Q - 8 }, "x"];
+    const { startQ } = slot(db);
+    const bodies = [
+      { title: "", ...slot(db) },
+      { title: "x", startQ, endQ: startQ },
+      { title: "x", startQ, endQ: startQ + 17 },
+      { title: "x", startQ: Q - 9, endQ: Q - 8 },
+      "x",
+    ];
     for (const b of bodies) expect(status(() => createOuting(db, "demo", "you", b, NOW))).toBe(400);
     const id = make(db);
     expect(status(() => answerOuting(db, "demo", "you", id, { answer: "x" }))).toBe(400);
     expect(status(() => answerOuting(db, "demo", "you", "nope", { answer: "y" }))).toBe(404);
+  });
+
+  it("only accepts a time the group is free for", () => {
+    const db = fresh();
+    const windows = bestWindows(loadGroup(db, "demo", "you").members.filter(isSetUp), Q + 1, Q + 1 + 14 * QUANTA_PER_DAY, { limit: Infinity });
+    const inside = (s: number) => windows.some((w) => w.startQ <= s && s + 4 <= w.endQ);
+    let busy = Q + 1;
+    while (inside(busy)) busy++;
+    expect(status(() => createOuting(db, "demo", "you", { title: "x", startQ: busy, endQ: busy + 4 }, NOW))).toBe(409);
+    expect(status(() => createOuting(db, "demo", "you", { title: "x", ...slot(db) }, NOW))).toBe(0);
   });
 
   it("marks the time busy once, only when asked", () => {
@@ -50,7 +72,7 @@ describe("outings", () => {
     answerOuting(db, "demo", "diego", id, { answer: "y" }, NOW);
     expect(loadGroup(db, "demo", "you").members.find((m) => m.id === "diego")!.overrides).toEqual({});
     answerOuting(db, "demo", "diego", id, { answer: "y", markBusy: true }, NOW);
-    expect(Object.keys(loadGroup(db, "demo", "you").members.find((m) => m.id === "diego")!.overrides)).toHaveLength(6);
+    expect(Object.keys(loadGroup(db, "demo", "you").members.find((m) => m.id === "diego")!.overrides)).toHaveLength(4);
   });
 
   it("lets only the proposer or the owner delete", () => {
@@ -90,13 +112,14 @@ describe("outings", () => {
   it("refuses an answer once the outing is over", () => {
     const db = fresh();
     const id = make(db);
-    expect(status(() => answerOuting(db, "demo", "you", id, { answer: "y" }, NOW + 2 * 86_400_000))).toBe(400);
+    expect(status(() => answerOuting(db, "demo", "you", id, { answer: "y" }, NOW + 20 * 86_400_000))).toBe(400);
   });
 
   it("never reaches an outing of another group", () => {
     const db = fresh();
     const other = createGroup(db, { groupName: "Other", name: "Zed" });
-    const id = createOuting(db, other.groupId, other.memberId, { title: "x", startQ: Q + 100, endQ: Q + 104 }, NOW).id;
+    const id = "theirs";
+    db.prepare(`INSERT INTO outing (id, group_id, title, start_q, end_q) VALUES (?, ?, 'x', ?, ?)`).run(id, other.groupId, Q + 100, Q + 104);
     expect(status(() => answerOuting(db, "demo", "you", id, { answer: "y" }, NOW))).toBe(404);
     expect(status(() => deleteOuting(db, "demo", "you", id))).toBe(404);
     expect(listOutings(db, other.groupId)).toHaveLength(1);

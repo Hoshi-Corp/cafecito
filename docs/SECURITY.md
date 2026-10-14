@@ -23,7 +23,7 @@ A small group of friends on a self-hosted instance. In scope: someone on the int
 | Account deletion | Deletes the member's row, which cascades to availability, sessions and sign-in links; closes their streams; ownership passes to the earliest member, or the group and its invites go when nobody is left. | OK |
 | Live updates | Each stream is authenticated when opened. Removed members, deleted accounts and signed-out devices have their streams closed. Events carry only what other members may already see. | OK |
 | Input validation | Names, colors, time zones (must be usable by the availability code), patterns, emails, slot sizes, invite settings and override marks are checked on the server; up to 2,000 overrides per request. | OK |
-| Plans (outings) | The member and group come from the cookie. An outing is looked up by id and the session's group, so another group's plan cannot be answered or deleted. An RSVP is always the caller's own row. Delete: whoever proposed it or the owner. Title, place, time range and answer are validated; at most 50 plans per group. | OK |
+| Plans (outings) | The member and group come from the cookie. An outing is looked up by id and the session's group, so another group's plan cannot be answered or deleted. An RSVP is always the caller's own row. Delete: whoever proposed it or the owner. Title, place, time range (at most 4 hours, inside a window where the group is free) and answer are validated; at most 50 plans per group. | OK |
 | Secrets in the repo | None. The demo tokens are public by design and only exist with `CAFECITO_DEMO=1`. | OK |
 
 Tests for these rules: `src/server/groups.test.ts`, `account.test.ts`, `outings.test.ts` and `routes.test.ts`.
