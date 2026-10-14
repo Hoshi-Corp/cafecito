@@ -89,7 +89,7 @@ One account in several groups (climbing friends, old coworkers) with a group swi
 - Joining by invite link while signed in adds the group to the same account instead of starting a new one.
 - Needs a model change: a session belongs to one member in one group today, so an account (`user`) table comes first.
 
-Exit for 1.1: all four parts built; the screens tried in a real browser and on a phone (**not done yet for plans and the wishlist**: they are covered by tests and by calls to the running server, not by a person using them); a second device and a real upgrade from a 1.0.x data file tried by someone other than the author.
+Exit for 1.1: all four parts built; the screens tried in a real browser and on a phone (**done for plans and the wishlist on 2026-10-14**, by the author, following a checklist; nothing wrong was reported); a second device and a real upgrade from a 1.0.x data file tried by someone other than the author.
 
 ## Possible future releases
 
