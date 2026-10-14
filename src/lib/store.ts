@@ -216,8 +216,9 @@ export const removePlace = (id: string) => listWrite(`/places/${id}`, "DELETE");
 export const editPlace = (id: string, fields: Partial<PlaceFields>) =>
   listWrite(`/places/${id}`, "PATCH", fields);
 
-export const ratePlace = (id: string, stars: number | null) =>
-  stars === null ? listWrite(`/places/${id}/rating`, "DELETE") : listWrite(`/places/${id}/rating`, "PUT", { stars });
+export const ratePlace = (id: string, stars: number) => listWrite(`/places/${id}/rating`, "PUT", { stars });
+
+export const clearRating = (id: string) => listWrite(`/places/${id}/rating`, "DELETE");
 
 export const addComment = (id: string, body: string) => listWrite(`/places/${id}/comments`, "POST", { body });
 

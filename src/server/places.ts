@@ -4,11 +4,11 @@ import { HttpError, assertOwner, bad, cleanText, isObject } from "./groups";
 import type { Place, PlaceComment } from "../lib/types";
 
 export const MAX_PLACES = 100;
+// Comments are counted per group, so one group cannot make every load carry a huge list.
+export const MAX_COMMENTS = 300;
 
 /** For a table with a `place_id`: only the places of one group (bind the group id). */
 const IN_GROUP = `place_id IN (SELECT id FROM place WHERE group_id = ?)`;
-// Comments are counted per group, so one group cannot make every load carry a huge list.
-export const MAX_COMMENTS = 300;
 
 /** "" or an http(s) link: anything else (javascript:, data:) must never become a clickable href. Stored as the parser writes it. */
 function cleanUrl(v: unknown) {

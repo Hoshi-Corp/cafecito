@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { addComment, addPlace, editPlace, ratePlace, removeComment, removePlace, setBeenThere, votePlace } from "@/lib/store";
+import { addComment, addPlace, clearRating, editPlace, ratePlace, removeComment, removePlace, setBeenThere, votePlace } from "@/lib/store";
 import type { Group, Place, PlaceFields } from "@/lib/types";
 
 const field = "rounded-md border border-line bg-cell px-2 py-1";
@@ -101,7 +101,7 @@ function PlaceRow({ place: p, group }: { place: Place; group: Group }) {
         <span className="text-muted">Suggested by {nameOf(group, p.suggestedBy) ?? "someone who left"}</span>
       </div>
       <Rating place={p} meId={group.meId} run={run} />
-      <Comments place={p} group={group} run={run} />
+      <Comments place={p} group={group} report={setError} />
       {error && (
         <p role="alert" className="text-xs text-danger">
           {error}
@@ -124,7 +124,7 @@ function Rating({ place: p, meId, run }: { place: Place; meId: string; run: (wri
             key={n}
             aria-label={`${n} ${n === 1 ? "star" : "stars"}`}
             aria-pressed={n === mine}
-            onClick={() => run(ratePlace(p.id, n === mine ? null : n))}
+            onClick={() => run(n === mine ? clearRating(p.id) : ratePlace(p.id, n))}
             className={`px-0.5 text-base leading-none ${n <= mine ? "text-maybe" : "text-line"}`}
           >
             ★
@@ -136,7 +136,7 @@ function Rating({ place: p, meId, run }: { place: Place; meId: string; run: (wri
   );
 }
 
-function Comments({ place: p, group, run }: { place: Place; group: Group; run: (write: Promise<string | null>) => void }) {
+function Comments({ place: p, group, report }: { place: Place; group: Group; report: (error: string | null) => void }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   return (
@@ -151,7 +151,7 @@ function Comments({ place: p, group, run }: { place: Place; group: Group; run: (
                 <span className="font-medium">{author ?? "Someone"}</span>: {c.body}
               </span>
               {mayChange(group, c.memberId) && (
-                <button aria-label={`Delete comment by ${author ?? "someone"}`} className="text-muted underline" onClick={() => run(removeComment(p.id, c.id))}>
+                <button aria-label={`Delete comment by ${author ?? "someone"}`} className="text-muted underline" onClick={() => removeComment(p.id, c.id).then(report)}>
                   Delete
                 </button>
               )}
@@ -168,7 +168,7 @@ function Comments({ place: p, group, run }: { place: Place; group: Group; run: (
           const refused = await addComment(p.id, text.trim());
           setSending(false);
           if (!refused) setText("");
-          run(Promise.resolve(refused));
+          report(refused);
         }}
       >
         <input aria-label={`Comment on ${p.name}`} className={`${field} min-w-0 flex-1`} value={text} maxLength={500} onChange={(e) => setText(e.target.value)} />
