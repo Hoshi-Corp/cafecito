@@ -7,8 +7,10 @@ export const MAX_PLACES = 100;
 // shortcut: removed places stay for good and count toward this, so a group that adds and removes 500 places stops being able to add
 // more; add a purge of old removed places if that ever happens.
 export const MAX_PLACE_ROWS = 500;
-// Comments are counted per group, so one group cannot make every load carry a huge list.
+// Comments on the list are counted per group, so one group cannot make every load carry a huge list; comments on removed places
+// no longer load, so they only count toward the larger overall limit.
 export const MAX_COMMENTS = 300;
+export const MAX_COMMENT_ROWS = 3000;
 
 /** For a table with a `place_id` (bind the group id): the places of one group that are on the list, or all of them, removed ones included. */
 const ON_LIST = `place_id IN (SELECT id FROM place WHERE group_id = ? AND deleted_at IS NULL)`;
@@ -134,10 +136,13 @@ export function addComment(db: Db, groupId: string, memberId: string, placeId: s
   if (!isObject(body)) throw bad("Expected an object");
   findPlace(db, groupId, placeId);
   const text = cleanText(body.body, 500, true);
-  const { n } = db
-    .prepare(`SELECT count(*) n FROM place_comment WHERE ${EVER_IN_GROUP}`)
-    .get(groupId) as { n: number };
-  if (n >= MAX_COMMENTS) throw new HttpError(409, `The wishlist can hold ${MAX_COMMENTS} comments`);
+  const { listed, n } = db
+    .prepare(
+      `SELECT (SELECT count(*) FROM place_comment WHERE ${ON_LIST}) listed, (SELECT count(*) FROM place_comment WHERE ${EVER_IN_GROUP}) n`,
+    )
+    .get(groupId, groupId) as { listed: number; n: number };
+  if (listed >= MAX_COMMENTS) throw new HttpError(409, `The wishlist can hold ${MAX_COMMENTS} comments`);
+  if (n >= MAX_COMMENT_ROWS) throw new HttpError(409, "This group has used up its comments, including those on removed places");
   const id = randomUUID();
   db.prepare(`INSERT INTO place_comment (id, place_id, member_id, body, created_at) VALUES (?, ?, ?, ?, ?)`).run(id, placeId, memberId, text, now);
   return { id };

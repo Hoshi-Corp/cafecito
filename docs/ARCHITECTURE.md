@@ -108,7 +108,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `PATCH /api/groups/:id/places/:placeId` | Edit the details (whoever suggested it, or the owner), or mark it as visited (anyone in the group) |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/vote` | Add or take back my own "I want to go" vote |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/rating` | Set my star rating (1 to 5, replacing the earlier one) or take it back |
-| `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters, 300 comments per group) |
+| `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters; 300 comments on the list per group, 3,000 counting those on removed places) |
 | `DELETE /api/groups/:id/places/:placeId/comments/:commentId` | Delete a comment (whoever wrote it, or the owner; only the owner once the author has left) |
 | `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner): it leaves the list but stays in the database with its votes, ratings and comments, and can no longer be voted on, rated, commented on, edited or attached to a plan |
 | `GET /api/groups/:id/events` | SSE stream of changes |

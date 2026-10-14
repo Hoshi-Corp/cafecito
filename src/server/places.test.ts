@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import { deleteMe, exportMe } from "./account";
 import { HttpError, createGroup, removeMember } from "./groups";
-import { MAX_COMMENTS, MAX_PLACES, MAX_PLACE_ROWS, addComment, clearRating, createPlace, deleteComment, deletePlace, listPlaces, ratePlace, updatePlace, votePlace } from "./places";
+import { MAX_COMMENTS, MAX_COMMENT_ROWS, MAX_PLACES, MAX_PLACE_ROWS, addComment, clearRating, createPlace, deleteComment, deletePlace, listPlaces, ratePlace, updatePlace, votePlace } from "./places";
 import { seed } from "./seed";
 
 const fresh = () => {
@@ -261,6 +261,27 @@ describe("removing a place", () => {
     }
     expect(db.prepare(`SELECT count(*) n FROM place`).get()).toEqual({ n: MAX_PLACE_ROWS });
     expect(status(() => add(db))).toBe(409);
+  });
+
+  it("does not count its comments toward the visible limit, only toward the larger overall one", () => {
+    const db = fresh();
+    for (let i = 0; i < MAX_COMMENT_ROWS / MAX_COMMENTS; i++) {
+      const id = add(db);
+      for (let c = 0; c < MAX_COMMENTS; c++) addComment(db, "demo", "you", id, { body: "c" });
+      expect(status(() => addComment(db, "demo", "you", id, { body: "one more" }))).toBe(409); // the visible limit still holds
+      deletePlace(db, "demo", "you", id);
+    }
+    const fresh1 = add(db);
+    expect(db.prepare(`SELECT count(*) n FROM place_comment`).get()).toEqual({ n: MAX_COMMENT_ROWS });
+    expect(status(() => addComment(db, "demo", "you", fresh1, { body: "x" }))).toBe(409); // the overall limit
+  });
+
+  it("lets a group keep commenting after removing places whose comments filled the visible limit", () => {
+    const db = fresh();
+    const old = add(db);
+    for (let c = 0; c < MAX_COMMENTS; c++) addComment(db, "demo", "you", old, { body: "c" });
+    deletePlace(db, "demo", "you", old);
+    expect(status(() => addComment(db, "demo", "you", add(db), { body: "fresh" }))).toBe(0);
   });
 
   it("is still in my export, marked removed, when I had a part in it", () => {
