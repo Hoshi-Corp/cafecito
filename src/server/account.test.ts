@@ -82,7 +82,7 @@ describe("overrides stored as ranges", () => {
       old.close();
 
       const db = openDb(file);
-      expect(db.pragma("user_version", { simple: true })).toBe(6);
+      expect(db.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
       expect(ranges(db, "a")).toEqual([
         { s: 1, e: 3, mark: "f" },
         { s: 3, e: 4, mark: "m" },

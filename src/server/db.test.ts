@@ -19,7 +19,7 @@ it("creates the database file's folder and keeps data across reopen", () => {
     const second = openDb(file);
     expect(loadGroup(second, groupId, memberId).members[0].name).toBe("Kept");
     expect(second.prepare(`SELECT count(*) n FROM "group"`).get()).toEqual({ n: 1 });
-    expect(second.pragma("user_version", { simple: true })).toBe(6);
+    expect(second.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
     second.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
