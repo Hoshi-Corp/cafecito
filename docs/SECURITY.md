@@ -1,6 +1,6 @@
 # Cafecito: security review of auth and write paths
 
-Audience: contributors and people running an instance. Reviewed for the 1.0 release on 2026-10-11, against the 1.0 code; the 1.1 additions (plans and the wishlist) were reviewed as they were built, see the "Plans" and "Wishlist" rows. Re-review when a route, the session model or the schema changes.
+Audience: contributors and people running an instance. Reviewed for the 1.0 release on 2026-10-11, against the 1.0 code; the 1.1 additions (plans and the wishlist) were checked by the author and by automated review, not by an outside reviewer; see the "Plans" and "Wishlist" rows. Re-review when a route, the session model or the schema changes.
 
 ## Threat model
 
