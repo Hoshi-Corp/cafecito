@@ -10,6 +10,8 @@ export const MAX_PLACE_ROWS = 500;
 // Comments on the list are counted per group, so one group cannot make every load carry a huge list; comments on removed places
 // no longer load, so they only count toward the larger overall limit.
 export const MAX_COMMENTS = 300;
+// shortcut: comments on removed places stay for good and count toward this, so a group that reaches it can no longer comment;
+// add a purge of old removed places if that ever happens.
 export const MAX_COMMENT_ROWS = 3000;
 
 /** For a table with a `place_id` (bind the group id): the places of one group that are on the list, or all of them, removed ones included. */
