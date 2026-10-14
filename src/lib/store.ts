@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Group, GroupEvent, Member, OverrideChange, OverrideMark, SlotMinutes } from "./types";
+import type { Group, GroupEvent, Member, OverrideChange, OverrideMark, Rsvp, SlotMinutes } from "./types";
 
 // Server-backed store. The UI edits a local copy right away and each change is sent as a
 // per-member write (see docs/ARCHITECTURE.md); a failed write reloads the group from the server.
@@ -104,14 +104,14 @@ async function load() {
 }
 
 /** Sends one write after the previous one, so changes land in the order they were made. */
-function send(path: string, method: "PATCH", body: unknown) {
+function send(path: string, method: "PATCH" | "POST" | "PUT" | "DELETE", body?: unknown) {
   pending++;
   queue = queue
     .then(async () => {
       const res = await fetch(BASE + path, {
         method,
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`);
     })
@@ -178,3 +178,12 @@ export function updateMember(id: string, change: (member: Member) => Member) {
   const remove = Object.keys(before.overrides).map(Number).filter((q) => !(q in after.overrides));
   if (Object.keys(setMarks).length || remove.length) send("/me/overrides", "PATCH", { set: setMarks, remove });
 }
+
+// Outings are not painted optimistically: the server's reload event brings the new list back to every browser, this one included.
+export const proposeOuting = (outing: { title: string; place: string; startQ: number; endQ: number }) =>
+  send("/outings", "POST", outing);
+
+export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>
+  send(`/outings/${id}/rsvp`, "PUT", { answer, markBusy });
+
+export const removeOuting = (id: string) => send(`/outings/${id}`, "DELETE");
