@@ -29,7 +29,7 @@ describe("wishlist", () => {
     votePlace(db, "demo", "diego", id, true); // twice: still one vote
     votePlace(db, "demo", "you", id, true);
     expect(listPlaces(db, "demo")).toEqual([
-      { id, name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "camille", beenThere: false, votes: ["diego", "you"], ratings: {}, comments: [] },
+      { id, name: "Café X", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "camille", beenThere: false, votes: ["diego", "you"], ratings: {}, comments: [] },
     ]);
     votePlace(db, "demo", "diego", id, false);
     votePlace(db, "demo", "sofia", id, false); // never voted: nothing happens
@@ -51,6 +51,12 @@ describe("wishlist", () => {
     ];
     for (const b of bodies) expect(status(() => createPlace(db, "demo", "you", b))).toBe(400);
     expect(status(() => createPlace(db, "demo", "you", { name: "ok" }))).toBe(0); // links and notes are optional
+  });
+
+  it("stores links as the parser writes them, so a link missing its slashes is not relative on an http page", () => {
+    const db = fresh();
+    createPlace(db, "demo", "you", { name: "X", link: "http:cafe.example", mapLink: " https://maps.example/a b " });
+    expect(listPlaces(db, "demo")[0]).toMatchObject({ link: "http://cafe.example/", mapLink: "https://maps.example/a%20b" });
   });
 
   it("caps the wishlist", () => {
@@ -113,8 +119,8 @@ describe("wishlist", () => {
     add(db, "diego", { name: "Unrelated" });
     votePlace(db, "demo", "camille", voted, true);
     expect(exportMe(db, "camille").places).toEqual([
-      { name: "Mine", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: true, votedByMe: false, myStars: null, myComments: [] },
-      { name: "Voted", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: false, votedByMe: true, myStars: null, myComments: [] },
+      { name: "Mine", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: true, votedByMe: false, myStars: null, myComments: [] },
+      { name: "Voted", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: false, votedByMe: true, myStars: null, myComments: [] },
     ]);
   });
 });

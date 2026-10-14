@@ -7,12 +7,14 @@ export const MAX_PLACES = 100;
 // Comments are counted per group, so one group cannot make every load carry a huge list.
 export const MAX_COMMENTS = 300;
 
-/** "" or an http(s) link: anything else (javascript:, data:) must never become a clickable href. */
+/** "" or an http(s) link: anything else (javascript:, data:) must never become a clickable href. Stored as the parser writes it. */
 function cleanUrl(v: unknown) {
   const url = cleanText(v, 500, false);
   if (!url) return "";
   try {
-    if (/^https?:$/.test(new URL(url).protocol)) return url;
+    const parsed = new URL(url);
+    // "http:cafe.example" parses, but as an href it is relative on an http page; the parsed form has the slashes.
+    if (/^https?:$/.test(parsed.protocol)) return parsed.href;
   } catch {}
   throw bad("Links must start with http:// or https://");
 }
