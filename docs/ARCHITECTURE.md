@@ -98,10 +98,10 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `POST /api/sign-in/link` | Sign in with a personal or emailed link (token in the body, not the URL); creates a session |
 | `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id` |
 | `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
-| `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner); the proposer gets their typical week back for that time |
+| `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
-Writes are **per member and own-rows-only**. No call replaces the whole group.
+Writes are **per member and own-rows-only**. No call replaces the whole group. One exception: deleting a plan clears its proposer's override marks for that plan's time (`deleteOuting`), so when the owner deletes someone else's plan, that is a write to another member's rows. It only removes marks, never sets any.
 
 ### Live updates
 
