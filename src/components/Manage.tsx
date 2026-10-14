@@ -45,7 +45,7 @@ export function Manage({ group }: { group: Group }) {
     refresh();
   };
   const remove = async (id: string, name: string) => {
-    if (!confirm(`Remove ${name}? Their availability is deleted.`)) return;
+    if (!confirm(`Remove ${name}? Their availability is deleted. Their plans, wishlist places and comments stay, without their name.`)) return;
     await call(`/members/${id}`, "DELETE");
     retryLoad();
   };

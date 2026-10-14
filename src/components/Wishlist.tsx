@@ -148,10 +148,10 @@ function Comments({ place: p, group, report }: { place: Place; group: Group; rep
           return (
             <li key={c.id} className="flex items-baseline justify-between gap-2">
               <span>
-                <span className="font-medium">{author ?? "Someone"}</span>: {c.body}
+                <span className="font-medium">{author ?? "Deleted user"}</span>: {c.body}
               </span>
               {mayChange(group, c.memberId) && (
-                <button aria-label={`Delete comment by ${author ?? "someone"}`} className="text-muted underline" onClick={() => removeComment(p.id, c.id).then(report)}>
+                <button aria-label={`Delete comment by ${author ?? "a deleted user"}`} className="text-muted underline" onClick={() => removeComment(p.id, c.id).then(report)}>
                   Delete
                 </button>
               )}

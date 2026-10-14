@@ -14,7 +14,7 @@ export const GET = (_req: Request, ctx: RouteContext<"/api/groups/[id]/me">) =>
 export const PATCH = (req: Request, ctx: RouteContext<"/api/groups/[id]/me">) =>
   handle(ctx.params, async ({ db, meId }) => updateMe(db, meId, await json(req)), "member");
 
-/** Deletes my account and data; this device is signed out. */
+/** Deletes my account and my availability (what I wrote in the group stays, without my name); this device is signed out. */
 export const DELETE = (_req: Request, ctx: RouteContext<"/api/groups/[id]/me">) =>
   handle(
     ctx.params,

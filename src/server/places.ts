@@ -135,11 +135,11 @@ export function addComment(db: Db, groupId: string, memberId: string, placeId: s
   return { id };
 }
 
-/** Whoever wrote it, or the owner. */
+/** Whoever wrote it, or the owner (only the owner for the comment of someone who left). */
 export function deleteComment(db: Db, groupId: string, memberId: string, placeId: string, commentId: string) {
   findPlace(db, groupId, placeId);
   const c = db.prepare(`SELECT member_id memberId FROM place_comment WHERE id = ? AND place_id = ?`).get(commentId, placeId) as
-    | { memberId: string }
+    | { memberId: string | null }
     | undefined;
   if (!c) throw new HttpError(404, "No such comment");
   if (c.memberId !== memberId) assertOwner(db, memberId);

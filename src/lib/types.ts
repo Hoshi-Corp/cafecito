@@ -104,7 +104,8 @@ export interface Place {
 
 export interface PlaceComment {
   id: string;
-  memberId: string;
+  /** The author; null once they left the group (the comment stays). */
+  memberId: string | null;
   body: string;
   /** Epoch ms. */
   createdAt: number;

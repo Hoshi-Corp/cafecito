@@ -50,3 +50,30 @@ it("upgrades a database from before the wishlist: only new tables appear, every 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it("upgrades comments to survive their author leaving: every comment is copied, the author link can now be cleared", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cafecito-"));
+  try {
+    const file = join(dir, "old.db");
+    const old = new Database(file);
+    old.pragma("foreign_keys = ON");
+    MIGRATIONS.slice(0, 8).forEach((sql) => old.exec(sql));
+    old.pragma("user_version = 8");
+    old.exec(`INSERT INTO "group" VALUES ('g', 'G', 30);
+      INSERT INTO member (id, group_id, name, color, time_zone, role, pattern, position) VALUES ('a', 'g', 'Ana', '#000000', 'UTC', 'owner', '', 0), ('b', 'g', 'Ben', '#000000', 'UTC', 'member', '', 1);
+      INSERT INTO place (id, group_id, name, created_at) VALUES ('p', 'g', 'Café', 1);
+      INSERT INTO place_comment VALUES ('c1', 'p', 'a', 'one', 1), ('c2', 'p', 'b', 'two', 2);`);
+    old.close();
+
+    const db = openDb(file);
+    expect(db.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
+    db.prepare(`DELETE FROM member WHERE id = 'b'`).run();
+    expect(db.prepare(`SELECT id, member_id memberId, body FROM place_comment ORDER BY id`).all()).toEqual([
+      { id: "c1", memberId: "a", body: "one" },
+      { id: "c2", memberId: null, body: "two" },
+    ]);
+    db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
