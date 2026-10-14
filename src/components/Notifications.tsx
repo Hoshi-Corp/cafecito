@@ -39,15 +39,10 @@ export function Notifications() {
       call("/me/push", "GET")
         .then((res) => (res.ok ? res.json() : null))
         .then(async (s: State | null) => {
-          // The server's row and the browser's can disagree. Show what is true, and fix the server's side.
-          const sub = s && Notification.permission === "granted" ? await browserSubscription() : null;
-          if (s?.subscribed && !sub) {
-            // Permission revoked or site data cleared: the row would send to nobody.
-            await call("/me/push", "DELETE");
+          // The server's row can outlive the browser's (permission revoked, site data cleared): show off, and tidy the row.
+          if (s?.subscribed && !(Notification.permission === "granted" && (await browserSubscription()))) {
+            await call("/me/push", "DELETE").catch(() => {}); // best effort: the switch must show either way
             s = { ...s, subscribed: false };
-          } else if (s && !s.subscribed && sub) {
-            // This browser still gets pushes through an earlier session's row (a new sign-in on the same browser): move it here.
-            if ((await call("/me/push", "PUT", sub.toJSON())).ok) s = { ...s, subscribed: true };
           }
           setState(s);
         })

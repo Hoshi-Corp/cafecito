@@ -117,11 +117,22 @@ it("shows off, and clears the server's row, when the browser no longer has the s
   }
 });
 
-it("takes over a subscription the browser still holds from an earlier sign-in", async () => {
-  const { calls } = browser("granted", { held: true, start: "granted" });
+it("leaves the switch off when the browser holds a subscription the server has no row for, so nobody is opted in by a tap they never made", async () => {
+  const { calls, held } = browser("granted", { held: true, start: "granted" });
   render(<Notifications />);
-  expect(((await screen.findByRole("checkbox")) as HTMLInputElement).checked).toBe(true);
-  expect(calls).toContain("PUT /api/groups/me/me/push");
+  expect(((await screen.findByRole("checkbox")) as HTMLInputElement).checked).toBe(false);
+  expect(calls).not.toContain("PUT /api/groups/me/me/push");
+  expect(held()).not.toBeNull();
+});
+
+it("still shows the switch when tidying the server's row fails", async () => {
+  browser("granted", { serverKnows: true, held: false });
+  vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
+    if (init?.method === "DELETE") throw new TypeError("offline");
+    return { ok: true, json: async () => ({ publicKey: "BPkey_-", subscribed: true }) };
+  });
+  render(<Notifications />);
+  expect(((await screen.findByRole("checkbox")) as HTMLInputElement).checked).toBe(false);
 });
 
 it("keeps the switch on when the browser and the server agree", async () => {
