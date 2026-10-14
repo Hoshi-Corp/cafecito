@@ -16,7 +16,7 @@ const markBusyFor = (db: Db, memberId: string, startQ: number, endQ: number) =>
 
 export function listOutings(db: Db, groupId: string): Outing[] {
   const rows = db
-    .prepare(`SELECT id, title, place, start_q startQ, end_q endQ, created_by createdBy FROM outing WHERE group_id = ? ORDER BY start_q`)
+    .prepare(`SELECT id, title, place, place_id placeId, start_q startQ, end_q endQ, created_by createdBy FROM outing WHERE group_id = ? ORDER BY start_q`)
     .all(groupId) as Omit<Outing, "rsvps">[];
   const answers = db
     .prepare(`SELECT outing_id id, member_id memberId, answer FROM rsvp WHERE outing_id IN (SELECT id FROM outing WHERE group_id = ?)`)
@@ -38,10 +38,21 @@ export function createOuting(db: Db, groupId: string, memberId: string, body: un
   if (!windows.some((w) => w.startQ <= startQ && endQ <= w.endQ)) throw new HttpError(409, "That time is no longer free for the group");
   const { n } = db.prepare(`SELECT count(*) n FROM outing WHERE group_id = ?`).get(groupId) as { n: number };
   if (n >= MAX_OUTINGS) throw new HttpError(409, `A group can have ${MAX_OUTINGS} plans at a time`);
+  const title = cleanText(body.title, 80, true);
+  let place = cleanText(body.place, 120, false);
+  // A wishlist place must be in this group; without a typed "where" its name stands in.
+  let placeId: string | null = null;
+  if (body.placeId !== undefined && body.placeId !== null) {
+    if (typeof body.placeId !== "string") throw bad("Invalid place");
+    const p = db.prepare(`SELECT id, name FROM place WHERE id = ? AND group_id = ?`).get(body.placeId, groupId) as { id: string; name: string } | undefined;
+    if (!p) throw new HttpError(404, "No such place");
+    placeId = p.id;
+    place ||= p.name.slice(0, 120);
+  }
   const id = randomUUID();
   db.transaction(() => {
-    db.prepare(`INSERT INTO outing (id, group_id, title, place, start_q, end_q, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      id, groupId, cleanText(body.title, 80, true), cleanText(body.place, 120, false), startQ, endQ, memberId,
+    db.prepare(`INSERT INTO outing (id, group_id, title, place, place_id, start_q, end_q, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, groupId, title, place, placeId, startQ, endQ, memberId,
     );
     // Whoever proposes it is going, so that time is busy for them, as if they had answered yes with "mark busy".
     db.prepare(`INSERT INTO rsvp (outing_id, member_id, answer) VALUES (?, ?, 'y')`).run(id, memberId);

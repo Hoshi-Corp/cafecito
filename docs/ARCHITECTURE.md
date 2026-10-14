@@ -38,7 +38,7 @@ src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/s
 src/app/join/[token]      join screen
 src/app/sign-in, [token]  where a personal link (`/sign-in#token`) or an emailed one (`/sign-in/token`) lands
 src/components/GroupApp   screens: typical week, dates, group heatmap, best times
-src/components/Outings   propose a best time, the plans list, RSVP
+src/components/Outings   propose a best time (optionally from the wishlist), the plans list, RSVP
 src/components/Wishlist  the wishlist: add, edit, vote, rate, comment, mark visited, remove
 src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
 src/components/Account    my account: recovery email, devices, export, delete
@@ -69,7 +69,7 @@ override(member_id, start_q, end_q, mark)                                      -
 invite(id, token_hash, group_id, expires_at, max_uses, uses, revoked_at)
 session(token_hash, member_id, device, created_at, last_seen)                  -- deleted with the member
 sign_in_link(token_hash, member_id, expires_at)                                -- single use, 30 minutes
-outing(id, group_id, title, place, start_q, end_q, created_by)                 -- created_by is set to null when that member leaves
+outing(id, group_id, title, place, place_id, start_q, end_q, created_by)        -- created_by is set to null when that member leaves; place_id is set to null when that wishlist place is deleted, and the `place` text stays
 rsvp(outing_id, member_id, answer)                                             -- answer: y | m | n; deleted with the outing or the member
 place(id, group_id, name, link, map_link, notes, suggested_by, been_there, created_at)  -- suggested_by is set to null when that member leaves
 place_vote(place_id, member_id)                                                -- one per member and place; deleted with the place or the member
@@ -101,7 +101,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `GET /api/sign-in` | Whether email sign-in is on |
 | `POST /api/sign-in` | Email a sign-in link to a recovery address |
 | `POST /api/sign-in/link` | Sign in with a personal or emailed link (token in the body, not the URL); creates a session |
-| `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id` |
+| `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; it may point at a wishlist place of the group (`placeId`, whose name stands in for an empty place); the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id` |
 | `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
 | `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there |
 | `POST /api/groups/:id/places` | Add a café or restaurant to the wishlist (name, optional website and map link, notes; http(s) links only; up to 100 places per group); the places come with `GET /api/groups/:id` |
@@ -110,7 +110,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/rating` | Set my star rating (1 to 5, replacing the earlier one) or take it back |
 | `POST /api/groups/:id/places/:placeId/comments` | Comment on a place (up to 500 characters, 300 comments per group) |
 | `DELETE /api/groups/:id/places/:placeId/comments/:commentId` | Delete a comment (whoever wrote it, or the owner) |
-| `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes go with it |
+| `DELETE /api/groups/:id/places/:placeId` | Remove a place (whoever suggested it, or the owner); its votes, ratings and comments go with it |
 | `GET /api/groups/:id/events` | SSE stream of changes |
 
 Writes are **per member and own-rows-only**. No call replaces the whole group. The owner can also act on other members (remove them, replace their personal link), and deleting a plan adds one more: it clears its proposer's override marks for that plan's time (`deleteOuting`), so when the owner deletes someone else's plan, that member's availability changes. It only removes marks, never sets any.

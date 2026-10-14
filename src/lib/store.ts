@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Group, GroupEvent, Member, OverrideChange, OverrideMark, Rsvp, SlotMinutes } from "./types";
+import type { Group, GroupEvent, Member, OverrideChange, OverrideMark, PlaceFields, Rsvp, SlotMinutes } from "./types";
 
 // Server-backed store. The UI edits a local copy right away and each change is sent as a
 // per-member write (see docs/ARCHITECTURE.md); a failed write reloads the group from the server.
@@ -197,7 +197,7 @@ async function listWrite(...args: Parameters<typeof send>) {
   return error;
 }
 
-export const proposeOuting = (outing: { title: string; place: string; startQ: number; endQ: number }) =>
+export const proposeOuting = (outing: { title: string; place: string; placeId?: string; startQ: number; endQ: number }) =>
   listWrite("/outings", "POST", outing);
 
 export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>
@@ -205,7 +205,7 @@ export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>
 
 export const removeOuting = (id: string) => listWrite(`/outings/${id}`, "DELETE");
 
-export const addPlace = (place: { name: string; link: string; mapLink: string; notes: string }) => listWrite("/places", "POST", place);
+export const addPlace = (place: PlaceFields) => listWrite("/places", "POST", place);
 
 export const votePlace = (id: string, on: boolean) => listWrite(`/places/${id}/vote`, on ? "PUT" : "DELETE");
 
@@ -213,11 +213,12 @@ export const setBeenThere = (id: string, beenThere: boolean) => listWrite(`/plac
 
 export const removePlace = (id: string) => listWrite(`/places/${id}`, "DELETE");
 
-export const editPlace = (id: string, fields: Partial<{ name: string; link: string; mapLink: string; notes: string }>) =>
+export const editPlace = (id: string, fields: Partial<PlaceFields>) =>
   listWrite(`/places/${id}`, "PATCH", fields);
 
-export const ratePlace = (id: string, stars: number | null) =>
-  stars === null ? listWrite(`/places/${id}/rating`, "DELETE") : listWrite(`/places/${id}/rating`, "PUT", { stars });
+export const ratePlace = (id: string, stars: number) => listWrite(`/places/${id}/rating`, "PUT", { stars });
+
+export const clearRating = (id: string) => listWrite(`/places/${id}/rating`, "DELETE");
 
 export const addComment = (id: string, body: string) => listWrite(`/places/${id}/comments`, "POST", { body });
 

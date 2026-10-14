@@ -130,4 +130,8 @@ export const MIGRATIONS = [
   );
   CREATE INDEX place_comment_place ON place_comment(place_id);
   `,
+  // 1.1: a plan can point at a wishlist place; its own `place` text stays if the place is deleted.
+  `
+  ALTER TABLE outing ADD COLUMN place_id TEXT REFERENCES place(id) ON DELETE SET NULL;
+  `,
 ];

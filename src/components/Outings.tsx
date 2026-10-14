@@ -4,7 +4,7 @@ import { DateTime } from "luxon";
 import { useState } from "react";
 import { MAX_OUTING_QUANTA, QUANTUM_MS } from "@/lib/availability";
 import { answerOuting, proposeOuting, removeOuting } from "@/lib/store";
-import type { Group, Outing, Rsvp } from "@/lib/types";
+import type { Group, Outing, Place, Rsvp } from "@/lib/types";
 
 const ANSWERS: { value: Rsvp; label: string }[] = [
   { value: "y", label: "Yes" },
@@ -22,14 +22,17 @@ const when = (o: { startQ: number; endQ: number }, zone: string) => {
 export function ProposeForm({
   window: w,
   zone,
+  places,
   onDone,
 }: {
   window: { startQ: number; endQ: number };
   zone: string;
+  places: Place[];
   onDone: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [place, setPlace] = useState("");
+  const [placeId, setPlaceId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const slot = { startQ: w.startQ, endQ: Math.min(w.endQ, w.startQ + MAX_OUTING_QUANTA) };
@@ -41,7 +44,7 @@ export function ProposeForm({
         e.preventDefault();
         if (sending) return;
         setSending(true);
-        const refused = await proposeOuting({ title: title.trim(), place, ...slot });
+        const refused = await proposeOuting({ title: title.trim(), place, ...(placeId && { placeId }), ...slot });
         setSending(false);
         if (refused) setError(refused);
         else onDone();
@@ -52,6 +55,28 @@ export function ProposeForm({
         <span className="text-xs text-muted">What</span>
         <input className={field} value={title} maxLength={80} required pattern=".*\S.*" autoFocus onChange={(e) => setTitle(e.target.value)} />
       </label>
+      {places.length > 0 && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted">From the wishlist (optional)</span>
+          <select
+            className={field}
+            value={placeId}
+            onChange={(e) => {
+              setPlaceId(e.target.value);
+              const picked = places.find((p) => p.id === e.target.value);
+              if (picked) setPlace(picked.name);
+            }}
+          >
+            <option value="">None</option>
+            {places.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.beenThere ? " (been there)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="flex flex-col gap-1">
         <span className="text-xs text-muted">Where (optional)</span>
         <input className={field} value={place} maxLength={120} onChange={(e) => setPlace(e.target.value)} />
@@ -96,12 +121,26 @@ function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; z
   const names = (a: Rsvp) =>
     group.members.filter((m) => o.rsvps[m.id] === a).map((m) => m.name.trim() || "Unnamed").join(", ");
   const canDelete = o.createdBy === group.meId || group.ownerId === group.meId;
+  // The wishlist place's website or map, when the plan points at one that still exists.
+  const picked = group.places?.find((p) => p.id === o.placeId);
+  const linked = picked?.link || picked?.mapLink || "";
   return (
     <li className="flex flex-col gap-1.5 text-sm">
       <div className="flex items-baseline justify-between gap-2">
         <span>
           <span className="font-medium">{o.title}</span>
-          {o.place && <span className="text-muted"> · {o.place}</span>}
+          {o.place && (
+            <span className="text-muted">
+              {" · "}
+              {linked ? (
+                <a href={linked} target="_blank" rel="noopener noreferrer" className="underline">
+                  {o.place}
+                </a>
+              ) : (
+                o.place
+              )}
+            </span>
+          )}
         </span>
         {canDelete && (
           <button className="text-xs text-muted underline" onClick={() => confirm(`Delete “${o.title}”?`) && run(removeOuting(o.id))}>

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import { deleteMe, exportMe } from "./account";
 import { HttpError, createGroup, removeMember } from "./groups";
-import { MAX_COMMENTS, MAX_PLACES, addComment, createPlace, deleteComment, deletePlace, listPlaces, ratePlace, updatePlace, votePlace } from "./places";
+import { MAX_COMMENTS, MAX_PLACES, addComment, clearRating, createPlace, deleteComment, deletePlace, listPlaces, ratePlace, updatePlace, votePlace } from "./places";
 import { seed } from "./seed";
 
 const fresh = () => {
@@ -129,14 +129,15 @@ describe("ratings and comments", () => {
   it("rates from one to five, replaces and takes back my own rating", () => {
     const db = fresh();
     const id = add(db);
-    ratePlace(db, "demo", "diego", id, 4);
-    ratePlace(db, "demo", "diego", id, 2);
-    ratePlace(db, "demo", "you", id, 5);
+    ratePlace(db, "demo", "diego", id, { stars: 4 });
+    ratePlace(db, "demo", "diego", id, { stars: 2 });
+    ratePlace(db, "demo", "you", id, { stars: 5 });
     expect(listPlaces(db, "demo")[0].ratings).toEqual({ diego: 2, you: 5 });
-    ratePlace(db, "demo", "diego", id, null);
-    ratePlace(db, "demo", "sofia", id, null); // never rated: nothing happens
+    clearRating(db, "demo", "diego", id);
+    clearRating(db, "demo", "sofia", id); // never rated: nothing happens
     expect(listPlaces(db, "demo")[0].ratings).toEqual({ you: 5 });
-    for (const stars of [0, 6, 2.5, "3", undefined, -1]) expect(status(() => ratePlace(db, "demo", "you", id, stars))).toBe(400);
+    expect(status(() => ratePlace(db, "demo", "you", id, "5"))).toBe(400);
+    for (const stars of [0, 6, 2.5, "3", undefined, -1]) expect(status(() => ratePlace(db, "demo", "you", id, { stars }))).toBe(400);
     expect(listPlaces(db, "demo")[0].ratings).toEqual({ you: 5 });
   });
 
@@ -175,7 +176,7 @@ describe("ratings and comments", () => {
     const other = createGroup(db, { groupName: "Other", name: "Zed" });
     const theirs = createPlace(db, other.groupId, other.memberId, { name: "Theirs" }).id;
     const comment = addComment(db, other.groupId, other.memberId, theirs, { body: "hi" }).id;
-    expect(status(() => ratePlace(db, "demo", "you", theirs, 3))).toBe(404);
+    expect(status(() => ratePlace(db, "demo", "you", theirs, { stars: 3 }))).toBe(404);
     expect(status(() => addComment(db, "demo", "you", theirs, { body: "x" }))).toBe(404);
     expect(status(() => deleteComment(db, "demo", "you", theirs, comment))).toBe(404);
     const mine = add(db);
@@ -185,8 +186,8 @@ describe("ratings and comments", () => {
   it("removes a leaving member's ratings and comments, and everything goes with the group", () => {
     const db = fresh();
     const id = add(db);
-    ratePlace(db, "demo", "diego", id, 4);
-    ratePlace(db, "demo", "sofia", id, 3);
+    ratePlace(db, "demo", "diego", id, { stars: 4 });
+    ratePlace(db, "demo", "sofia", id, { stars: 3 });
     addComment(db, "demo", "diego", id, { body: "mine" });
     addComment(db, "demo", "sofia", id, { body: "kept" });
     removeMember(db, "demo", "you", "diego");
@@ -199,7 +200,7 @@ describe("ratings and comments", () => {
     const db = fresh();
     const id = add(db, "diego", { name: "Rated" });
     add(db, "diego", { name: "Unrelated" });
-    ratePlace(db, "demo", "camille", id, 5);
+    ratePlace(db, "demo", "camille", id, { stars: 5 });
     addComment(db, "demo", "camille", id, { body: "Mine" }, 1000);
     addComment(db, "demo", "diego", id, { body: "Not mine" }, 2000);
     expect(exportMe(db, "camille").places).toEqual([

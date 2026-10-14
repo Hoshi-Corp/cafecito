@@ -329,7 +329,7 @@ describe("settings", () => {
 });
 
 describe("outings", () => {
-  const outing = { id: "o1", title: "Brunch", place: "Café X", startQ: Date.now() / 900_000 + 100, endQ: Date.now() / 900_000 + 104, createdBy: "b", rsvps: { b: "y" as const } };
+  const outing = { id: "o1", title: "Brunch", place: "Café X", placeId: null, startQ: Date.now() / 900_000 + 100, endQ: Date.now() / 900_000 + 104, createdBy: "b", rsvps: { b: "y" as const } };
 
   it("proposes a best time with a title and place", async () => {
     await open();
@@ -374,6 +374,40 @@ describe("outings", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
     fireEvent.change(screen.getByLabelText("What"), { target: { value: "  " } });
     expect((screen.getByLabelText("What") as HTMLInputElement).validity.valid).toBe(false);
+  });
+
+  const cafe = { id: "p9", name: "Café Y", link: "https://y.example", mapLink: "", notes: "", suggestedBy: "b", beenThere: false, votes: [], ratings: {}, comments: [] };
+
+  it("offers the wishlist when proposing: picking a place fills Where and sends its id", async () => {
+    await open({ ...crew, places: [cafe, { ...cafe, id: "p8", name: "Old Haunt", beenThere: true }] });
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    expect(screen.getByRole("option", { name: "Old Haunt (been there)" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("From the wishlist (optional)"), { target: { value: "p9" } });
+    expect((screen.getByLabelText("Where (optional)") as HTMLInputElement).value).toBe("Café Y");
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
+    fireEvent.click(screen.getByRole("button", { name: "Propose" }));
+    expect(await sent(1)).toMatchObject([{ path: "/outings", body: { title: "Coffee", place: "Café Y", placeId: "p9" } }]);
+  });
+
+  it("does not show the wishlist picker when the wishlist is empty, and sends no placeId without a pick", async () => {
+    await open();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    expect(screen.queryByLabelText("From the wishlist (optional)")).toBeNull();
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
+    fireEvent.click(screen.getByRole("button", { name: "Propose" }));
+    const [w] = await sent(1);
+    expect(w.body).not.toHaveProperty("placeId");
+  });
+
+  it("links a plan to its wishlist place while it exists, and shows plain text once it is gone", async () => {
+    const group = { ...crew, places: [cafe], outings: [{ ...outing, place: "Café Y", placeId: "p9" }] };
+    await open(group);
+    const plans = within(screen.getByRole("heading", { name: "Plans" }).closest("section")!);
+    expect(plans.getByRole("link", { name: "Café Y" }).getAttribute("href")).toBe("https://y.example");
+    cleanup();
+    await open({ ...group, places: [], outings: [{ ...outing, place: "Café Y", placeId: null }] });
+    expect(screen.queryByRole("link", { name: "Café Y" })).toBeNull();
+    expect(screen.getByText(/Café Y/).textContent).toBe(" · Café Y");
   });
 
   it("lists plans with who answered, sends my answer, and hides delete from people who did not propose it", async () => {
@@ -585,4 +619,3 @@ describe("wishlist", () => {
     expect((screen.getByLabelText("Comment on Café X") as HTMLInputElement).value).toBe("Hi");
   });
 });
-

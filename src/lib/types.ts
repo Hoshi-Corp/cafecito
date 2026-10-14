@@ -64,12 +64,22 @@ export interface Outing {
   id: string;
   title: string;
   place: string;
+  /** The wishlist place it points at, or null (none picked, or that place was deleted). */
+  placeId: string | null;
   startQ: number;
   endQ: number;
   /** Who proposed it; null once they left the group. */
   createdBy: string | null;
   /** Answers by member id; members who have not answered are absent. */
   rsvps: Record<string, Rsvp>;
+}
+
+/** What a person types for a place. */
+export interface PlaceFields {
+  name: string;
+  link: string;
+  mapLink: string;
+  notes: string;
 }
 
 /** A café or restaurant on the group's wishlist. */

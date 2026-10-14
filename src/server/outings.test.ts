@@ -3,6 +3,7 @@ import { openDb } from "./db";
 import { deleteMe } from "./account";
 import { HttpError, createGroup, loadGroup, patchOverrides, prune, removeMember } from "./groups";
 import { MAX_OUTINGS, answerOuting, createOuting, deleteOuting, listOutings } from "./outings";
+import { createPlace, deletePlace } from "./places";
 import { seed } from "./seed";
 import { QUANTA_PER_DAY, bestWindows, isSetUp, toQuantum } from "../lib/availability";
 
@@ -40,7 +41,7 @@ describe("outings", () => {
     answerOuting(db, "demo", "diego", id, { answer: "y" }, NOW);
     answerOuting(db, "demo", "diego", id, { answer: "m" }, NOW);
     expect(listOutings(db, "demo")).toEqual([
-      { id, title: "Brunch", place: "Café X", ...time, createdBy: "camille", rsvps: { camille: "y", diego: "m" } },
+      { id, title: "Brunch", place: "Café X", placeId: null, ...time, createdBy: "camille", rsvps: { camille: "y", diego: "m" } },
     ]);
   });
 
@@ -129,6 +130,36 @@ describe("outings", () => {
     const windows = bestWindows(loadGroup(db, "demo", "you").members.filter(isSetUp), Q + 1, Q + 1 + 14 * QUANTA_PER_DAY, { limit: Infinity });
     expect(windows.every((w) => w.startQ >= endQ || w.endQ <= startQ)).toBe(true);
     expect(status(() => createOuting(db, "demo", "diego", { title: "Again", startQ, endQ }, NOW))).toBe(409);
+  });
+
+  it("points at a wishlist place: its name stands in for an empty Where, a typed Where wins", () => {
+    const db = fresh();
+    const cafe = createPlace(db, "demo", "camille", { name: "Café Y" }).id;
+    const time = slot(db);
+    const one = createOuting(db, "demo", "camille", { title: "A", placeId: cafe, ...time }, NOW).id;
+    const two = createOuting(db, "demo", "diego", { title: "B", place: "Terrace", placeId: cafe, ...slot(db) }, NOW).id;
+    const [a, b] = ["A", "B"].map((t) => listOutings(db, "demo").find((o) => o.title === t)!);
+    expect(a).toMatchObject({ id: one, place: "Café Y", placeId: cafe });
+    expect(b).toMatchObject({ id: two, place: "Terrace", placeId: cafe });
+  });
+
+  it("refuses a place of another group or a bad place id", () => {
+    const db = fresh();
+    const other = createGroup(db, { groupName: "Other", name: "Zed" });
+    const theirs = createPlace(db, other.groupId, other.memberId, { name: "Theirs" }).id;
+    const time = slot(db);
+    expect(status(() => createOuting(db, "demo", "you", { title: "x", placeId: theirs, ...time }, NOW))).toBe(404);
+    expect(status(() => createOuting(db, "demo", "you", { title: "x", placeId: "nope", ...time }, NOW))).toBe(404);
+    expect(status(() => createOuting(db, "demo", "you", { title: "x", placeId: 5, ...time }, NOW))).toBe(400);
+    expect(listOutings(db, "demo")).toEqual([]);
+  });
+
+  it("keeps the plan and its where-text when the wishlist place is deleted", () => {
+    const db = fresh();
+    const cafe = createPlace(db, "demo", "camille", { name: "Café Y" }).id;
+    createOuting(db, "demo", "camille", { title: "A", placeId: cafe, ...slot(db) }, NOW);
+    deletePlace(db, "demo", "camille", cafe);
+    expect(listOutings(db, "demo")).toMatchObject([{ place: "Café Y", placeId: null }]);
   });
 
   it("only accepts a time the group is free for", () => {
