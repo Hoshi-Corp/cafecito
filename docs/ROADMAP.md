@@ -59,29 +59,34 @@ Exit: a non-developer friend can run it from the guide (**not done yet**: the gu
 
 Exit: lose every device, open the saved link on a new one, and be back in the group with the same name, color and week. **Not tried on a real second device yet.**
 
+## Next minor release
+
+### 1.1 Events, notifications, wishlist and multiple groups
+Brings together four features from the earlier plan. Ship order inside the release is open; the wishlist's event link and the notifications depend on events, so events come first.
+
+#### Turn a slot into an event
+Pick a best window, propose it with a title and place; members RSVP yes/maybe/no. A "yes" can auto-mark that time as busy for that person. Gives the calendar an outcome instead of just a view.
+
+#### Notifications
+"A new window where everyone is free appeared", "Camille proposed Saturday 10:00", weekly reminder to refresh your week. Web push first; email only if SMTP exists. Every notification type individually mutable.
+
+#### Café and restaurant wishlist
+A shared list per group: name, link, notes, who suggested it, votes, "been there" flag. Optionally attach a place to an event. Support for optional link to the map. List of restaurants is kept. Members can score (1-5 stars) the restaurant and add comments.
+
+#### Multiple groups per person
+One account in several groups (climbing friends, old coworkers) with a group switcher, and a personal typical week that can be shared across groups or set per group.
+- **Create a new group while signed in.** Today "Create group" only appears to a browser with no session, so starting a second group means a private window and a separate identity. Add it to the group switcher: the creator becomes owner of the new group with the same account, and can carry over their typical week.
+- Joining by invite link while signed in adds the group to the same account instead of starting a new one.
+
 ## Possible future releases
 
 Ordered by how directly they help the core question. None is committed.
 
-### 1.1 Calendar sync (read-only)
+### 1.2 Calendar sync (read-only)
 Import a Google/Apple/Outlook calendar through its private ICS URL and mark busy time automatically. Kept as a **separate layer** from overrides, so a sync never overwrites a manual "free". Refresh on a schedule; the user can hide individual events. Risk: ICS recurrence and time-zone quirks; test with real exports.
 
-### 1.2 Turn a slot into an event
-Pick a best window, propose it with a title and place; members RSVP yes/maybe/no. A "yes" can auto-mark that time as busy for that person. Gives the calendar an outcome instead of just a view.
-
-### 1.3 Notifications
-"A new window where everyone is free appeared", "Camille proposed Saturday 10:00", weekly reminder to refresh your week. Web push first; email only if SMTP exists. Every notification type individually mutable.
-
-### 1.4 Café and restaurant wishlist
-A shared list per group: name, link, notes, who suggested it, votes, "been there" flag. Optionally attach a place to an event (1.2). Support for optional link to the map. List of restaurants is kept. Members can score (1-5 stars) the restaurant and add comments.
-
-### 1.5 Smarter suggestions
+### 1.3 Smarter suggestions
 Rank windows by preference as well as headcount: preferred days or times per member, minimum and maximum duration, travel buffer, and "not two outings in the same week". Still explainable: each suggestion says why it ranked where it did.
-
-### 1.6 Multiple groups per person
-One account in several groups (climbing friends, old coworkers) with a group switcher, and a personal typical week that can be shared across groups or set per group.
-- **Create a new group while signed in.** Today "Create group" only appears to a browser with no session, so starting a second group means a private window and a separate identity. Add it to the group switcher: the creator becomes owner of the new group with the same account, and can carry over their typical week.
-- Joining by invite link while signed in adds the group to the same account instead of starting a new one.
 
 ### 2.0 Federation or hosted option (only if there is demand)
 A hosted instance for people who cannot self-host, with accounts that need email. Changes the privacy and operations story substantially; decide deliberately, not by drift.
@@ -90,6 +95,6 @@ A hosted instance for people who cannot self-host, with accounts that need email
 Recurring events, availability by location/place rather than only time, public read-only share link, ICS export of events, import from poll tools, localization (Spanish first, given the name), native wrapper (PWA install first).
 
 ## What would change this plan
-- If fewer than half the members fill in their week after joining, prioritize onboarding (prefilled templates like "weekday evenings") over 1.1 to 1.4.
+- If fewer than half the members fill in their week after joining, prioritize onboarding (prefilled templates like "weekday evenings") over 1.1 and 1.2.
 - If email is available on most deployments, move magic-link sign-in ahead of 0.5.
 - If groups regularly exceed 12 people, replace the bit-mask in `bestWindows` before raising the cap.
