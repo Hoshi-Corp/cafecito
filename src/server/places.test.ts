@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import { deleteMe, exportMe } from "./account";
 import { HttpError, createGroup, removeMember } from "./groups";
-import { MAX_PLACES, createPlace, deletePlace, listPlaces, updatePlace, votePlace } from "./places";
+import { MAX_COMMENTS, MAX_PLACES, addComment, createPlace, deleteComment, deletePlace, listPlaces, ratePlace, updatePlace, votePlace } from "./places";
 import { seed } from "./seed";
 
 const fresh = () => {
@@ -29,7 +29,7 @@ describe("wishlist", () => {
     votePlace(db, "demo", "diego", id, true); // twice: still one vote
     votePlace(db, "demo", "you", id, true);
     expect(listPlaces(db, "demo")).toEqual([
-      { id, name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "camille", beenThere: false, votes: ["diego", "you"] },
+      { id, name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "camille", beenThere: false, votes: ["diego", "you"], ratings: {}, comments: [] },
     ]);
     votePlace(db, "demo", "diego", id, false);
     votePlace(db, "demo", "sofia", id, false); // never voted: nothing happens
@@ -113,8 +113,91 @@ describe("wishlist", () => {
     add(db, "diego", { name: "Unrelated" });
     votePlace(db, "demo", "camille", voted, true);
     expect(exportMe(db, "camille").places).toEqual([
-      { name: "Mine", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: true, votedByMe: false },
-      { name: "Voted", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: false, votedByMe: true },
+      { name: "Mine", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: true, votedByMe: false, myStars: null, myComments: [] },
+      { name: "Voted", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", beenThere: false, suggestedByMe: false, votedByMe: true, myStars: null, myComments: [] },
+    ]);
+  });
+});
+
+describe("ratings and comments", () => {
+  it("rates from one to five, replaces and takes back my own rating", () => {
+    const db = fresh();
+    const id = add(db);
+    ratePlace(db, "demo", "diego", id, 4);
+    ratePlace(db, "demo", "diego", id, 2);
+    ratePlace(db, "demo", "you", id, 5);
+    expect(listPlaces(db, "demo")[0].ratings).toEqual({ diego: 2, you: 5 });
+    ratePlace(db, "demo", "diego", id, null);
+    ratePlace(db, "demo", "sofia", id, null); // never rated: nothing happens
+    expect(listPlaces(db, "demo")[0].ratings).toEqual({ you: 5 });
+    for (const stars of [0, 6, 2.5, "3", undefined, -1]) expect(status(() => ratePlace(db, "demo", "you", id, stars))).toBe(400);
+    expect(listPlaces(db, "demo")[0].ratings).toEqual({ you: 5 });
+  });
+
+  it("adds comments in order, trimmed, and checks their length", () => {
+    const db = fresh();
+    const id = add(db);
+    addComment(db, "demo", "diego", id, { body: "  Loved the pastries " }, 1000);
+    addComment(db, "demo", "you", id, { body: "Too loud" }, 2000);
+    expect(listPlaces(db, "demo")[0].comments).toMatchObject([
+      { memberId: "diego", body: "Loved the pastries", createdAt: 1000 },
+      { memberId: "you", body: "Too loud", createdAt: 2000 },
+    ]);
+    for (const body of [{ body: "  " }, { body: "x".repeat(501) }, { body: 5 }, {}, "x"]) expect(status(() => addComment(db, "demo", "you", id, body))).toBe(400);
+  });
+
+  it("caps comments per group", () => {
+    const db = fresh();
+    const id = add(db);
+    for (let i = 0; i < MAX_COMMENTS; i++) addComment(db, "demo", "you", id, { body: "c" });
+    expect(status(() => addComment(db, "demo", "you", id, { body: "c" }))).toBe(409);
+  });
+
+  it("lets only the author or the owner delete a comment", () => {
+    const db = fresh();
+    const id = add(db);
+    const mine = addComment(db, "demo", "diego", id, { body: "a" }).id;
+    expect(status(() => deleteComment(db, "demo", "sofia", id, mine))).toBe(403);
+    deleteComment(db, "demo", "diego", id, mine);
+    deleteComment(db, "demo", "you", id, addComment(db, "demo", "diego", id, { body: "b" }).id); // the owner
+    expect(listPlaces(db, "demo")[0].comments).toEqual([]);
+    expect(status(() => deleteComment(db, "demo", "you", id, "nope"))).toBe(404);
+  });
+
+  it("never reaches a place or comment of another group", () => {
+    const db = fresh();
+    const other = createGroup(db, { groupName: "Other", name: "Zed" });
+    const theirs = createPlace(db, other.groupId, other.memberId, { name: "Theirs" }).id;
+    const comment = addComment(db, other.groupId, other.memberId, theirs, { body: "hi" }).id;
+    expect(status(() => ratePlace(db, "demo", "you", theirs, 3))).toBe(404);
+    expect(status(() => addComment(db, "demo", "you", theirs, { body: "x" }))).toBe(404);
+    expect(status(() => deleteComment(db, "demo", "you", theirs, comment))).toBe(404);
+    const mine = add(db);
+    expect(status(() => deleteComment(db, "demo", "you", mine, comment))).toBe(404); // right group, wrong place
+  });
+
+  it("removes a leaving member's ratings and comments, and everything goes with the group", () => {
+    const db = fresh();
+    const id = add(db);
+    ratePlace(db, "demo", "diego", id, 4);
+    ratePlace(db, "demo", "sofia", id, 3);
+    addComment(db, "demo", "diego", id, { body: "mine" });
+    addComment(db, "demo", "sofia", id, { body: "kept" });
+    removeMember(db, "demo", "you", "diego");
+    expect(listPlaces(db, "demo")[0]).toMatchObject({ ratings: { sofia: 3 }, comments: [{ body: "kept" }] });
+    for (const m of ["camille", "sofia", "kenji", "you"]) deleteMe(db, "demo", m);
+    expect(db.prepare(`SELECT (SELECT count(*) FROM place_rating) + (SELECT count(*) FROM place_comment) n`).get()).toEqual({ n: 0 });
+  });
+
+  it("exports my rating and comments, also for places I only rated or commented on", () => {
+    const db = fresh();
+    const id = add(db, "diego", { name: "Rated" });
+    add(db, "diego", { name: "Unrelated" });
+    ratePlace(db, "demo", "camille", id, 5);
+    addComment(db, "demo", "camille", id, { body: "Mine" }, 1000);
+    addComment(db, "demo", "diego", id, { body: "Not mine" }, 2000);
+    expect(exportMe(db, "camille").places).toEqual([
+      expect.objectContaining({ name: "Rated", suggestedByMe: false, votedByMe: false, myStars: 5, myComments: [{ at: new Date(1000).toISOString(), text: "Mine" }] }),
     ]);
   });
 });

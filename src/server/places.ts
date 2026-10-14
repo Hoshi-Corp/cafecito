@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db";
 import { HttpError, assertOwner, bad, cleanText, isObject } from "./groups";
-import type { Place } from "../lib/types";
+import type { Place, PlaceComment } from "../lib/types";
 
 export const MAX_PLACES = 100;
+// Comments are counted per group, so one group cannot make every load carry a huge list.
+export const MAX_COMMENTS = 300;
 
 /** "" or an http(s) link: anything else (javascript:, data:) must never become a clickable href. */
 function cleanUrl(v: unknown) {
@@ -20,11 +22,26 @@ export function listPlaces(db: Db, groupId: string): Place[] {
     .prepare(
       `SELECT id, name, link, map_link mapLink, notes, suggested_by suggestedBy, been_there beenThere FROM place WHERE group_id = ? ORDER BY created_at, rowid`,
     )
-    .all(groupId) as (Omit<Place, "votes" | "beenThere"> & { beenThere: number })[];
+    .all(groupId) as (Omit<Place, "votes" | "beenThere" | "ratings" | "comments"> & { beenThere: number })[];
   const votes = db
     .prepare(`SELECT place_id id, member_id memberId FROM place_vote WHERE place_id IN (SELECT id FROM place WHERE group_id = ?)`)
     .all(groupId) as { id: string; memberId: string }[];
-  return rows.map((p) => ({ ...p, beenThere: p.beenThere === 1, votes: votes.filter((v) => v.id === p.id).map((v) => v.memberId) }));
+  const inGroup = `place_id IN (SELECT id FROM place WHERE group_id = ?)`;
+  const ratings = db.prepare(`SELECT place_id id, member_id memberId, stars FROM place_rating WHERE ${inGroup}`).all(groupId) as {
+    id: string;
+    memberId: string;
+    stars: number;
+  }[];
+  const comments = db
+    .prepare(`SELECT id, place_id placeId, member_id memberId, body, created_at createdAt FROM place_comment WHERE ${inGroup} ORDER BY created_at, rowid`)
+    .all(groupId) as (PlaceComment & { placeId: string })[];
+  return rows.map((p) => ({
+    ...p,
+    beenThere: p.beenThere === 1,
+    votes: votes.filter((v) => v.id === p.id).map((v) => v.memberId),
+    ratings: Object.fromEntries(ratings.filter((r) => r.id === p.id).map((r) => [r.memberId, r.stars])),
+    comments: comments.filter((c) => c.placeId === p.id).map(({ id, memberId, body, createdAt }) => ({ id, memberId, body, createdAt })),
+  }));
 }
 
 export function createPlace(db: Db, groupId: string, memberId: string, body: unknown, now = Date.now()) {
@@ -84,4 +101,36 @@ export function votePlace(db: Db, groupId: string, memberId: string, placeId: st
 export function deletePlace(db: Db, groupId: string, memberId: string, placeId: string) {
   assertMayEdit(db, memberId, findPlace(db, groupId, placeId).suggestedBy);
   db.prepare(`DELETE FROM place WHERE id = ?`).run(placeId);
+}
+
+/** My own star rating (1 to 5), replacing an earlier one; `null` takes it back. */
+export function ratePlace(db: Db, groupId: string, memberId: string, placeId: string, stars: unknown) {
+  findPlace(db, groupId, placeId);
+  if (stars === null) return void db.prepare(`DELETE FROM place_rating WHERE place_id = ? AND member_id = ?`).run(placeId, memberId);
+  if (!Number.isInteger(stars) || (stars as number) < 1 || (stars as number) > 5) throw bad("Stars go from 1 to 5");
+  db.prepare(`INSERT INTO place_rating (place_id, member_id, stars) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET stars = excluded.stars`).run(placeId, memberId, stars);
+}
+
+export function addComment(db: Db, groupId: string, memberId: string, placeId: string, body: unknown, now = Date.now()) {
+  if (!isObject(body)) throw bad("Expected an object");
+  findPlace(db, groupId, placeId);
+  const text = cleanText(body.body, 500, true);
+  const { n } = db
+    .prepare(`SELECT count(*) n FROM place_comment WHERE place_id IN (SELECT id FROM place WHERE group_id = ?)`)
+    .get(groupId) as { n: number };
+  if (n >= MAX_COMMENTS) throw new HttpError(409, `The wishlist can hold ${MAX_COMMENTS} comments`);
+  const id = randomUUID();
+  db.prepare(`INSERT INTO place_comment (id, place_id, member_id, body, created_at) VALUES (?, ?, ?, ?, ?)`).run(id, placeId, memberId, text, now);
+  return { id };
+}
+
+/** Whoever wrote it, or the owner. */
+export function deleteComment(db: Db, groupId: string, memberId: string, placeId: string, commentId: string) {
+  findPlace(db, groupId, placeId);
+  const c = db.prepare(`SELECT member_id memberId FROM place_comment WHERE id = ? AND place_id = ?`).get(commentId, placeId) as
+    | { memberId: string }
+    | undefined;
+  if (!c) throw new HttpError(404, "No such comment");
+  if (c.memberId !== memberId) assertOwner(db, memberId);
+  db.prepare(`DELETE FROM place_comment WHERE id = ?`).run(commentId);
 }

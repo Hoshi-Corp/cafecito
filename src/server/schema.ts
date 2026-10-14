@@ -113,4 +113,21 @@ export const MIGRATIONS = [
     PRIMARY KEY (place_id, member_id)
   ) WITHOUT ROWID;
   `,
+  // 1.1: star ratings and comments on wishlist places. They go with the member who wrote them.
+  `
+  CREATE TABLE place_rating (
+    place_id TEXT NOT NULL REFERENCES place(id) ON DELETE CASCADE,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    stars INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+    PRIMARY KEY (place_id, member_id)
+  ) WITHOUT ROWID;
+  CREATE TABLE place_comment (
+    id TEXT PRIMARY KEY,
+    place_id TEXT NOT NULL REFERENCES place(id) ON DELETE CASCADE,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX place_comment_place ON place_comment(place_id);
+  `,
 ];

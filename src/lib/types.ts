@@ -86,4 +86,16 @@ export interface Place {
   beenThere: boolean;
   /** Members who want to go. */
   votes: string[];
+  /** Stars (1 to 5) by member id; members who have not rated are absent. */
+  ratings: Record<string, number>;
+  /** Oldest first. */
+  comments: PlaceComment[];
+}
+
+export interface PlaceComment {
+  id: string;
+  memberId: string;
+  body: string;
+  /** Epoch ms. */
+  createdAt: number;
 }

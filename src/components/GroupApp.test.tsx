@@ -405,7 +405,7 @@ describe("outings", () => {
 });
 
 describe("wishlist", () => {
-  const place = { id: "p1", name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "b", beenThere: false, votes: ["c"] };
+  const place = { id: "p1", name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "b", beenThere: false, votes: ["c"], ratings: {}, comments: [] };
   const visited = { ...place, id: "p2", name: "Old Haunt", link: "", mapLink: "", notes: "", suggestedBy: null, beenThere: true, votes: ["a", "b", "c"] };
   const wanted = { ...place, id: "p3", name: "Wanted", link: "", mapLink: "", notes: "", votes: ["a", "b"] };
 
@@ -515,4 +515,60 @@ describe("wishlist", () => {
     expect((await form().findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
     expect((form().getByLabelText("Website (optional)") as HTMLInputElement).value).toBe("https://ok.example");
   });
+
+  it("shows the average rating and lets me rate, change and take back my own stars", async () => {
+    await open({ ...crew, meId: "a", places: [{ ...place, ratings: { b: 5, c: 3 } }, { ...wanted, ratings: { a: 4 } }] });
+    expect(screen.getByText("4.0 from 2 ratings")).toBeTruthy();
+    expect(screen.getByText("4.0 from 1 rating")).toBeTruthy();
+    // The first place (Café X: 1 vote... sorted after Wanted, which has 2 votes); address stars by place.
+    const stars = (name: string) => within(screen.getByRole("group", { name: `Your rating of ${name}` }));
+    fireEvent.click(stars("Café X").getByRole("button", { name: "2 stars" }));
+    fireEvent.click(stars("Wanted").getByRole("button", { name: "4 stars" })); // my current rating: takes it back
+    expect(stars("Wanted").getByRole("button", { name: "4 stars" }).getAttribute("aria-pressed")).toBe("true");
+    expect(await sent(2)).toEqual([
+      { path: "/places/p1/rating", body: { stars: 2 } },
+      { path: "/places/p3/rating", body: null },
+    ]);
+  });
+
+  it("says when nobody has rated a place", async () => {
+    await open({ ...crew, places: [place] });
+    expect(screen.getByText("No ratings yet")).toBeTruthy();
+  });
+
+  it("lists comments with their authors, adds one, and offers Delete only on my own (or all to the owner)", async () => {
+    const withComments = { ...place, comments: [{ id: "k1", memberId: "b", body: "Loved it", createdAt: 1 }, { id: "k2", memberId: "c", body: "Loud", createdAt: 2 }] };
+    await open({ ...crew, meId: "c", places: [withComments] });
+    expect(screen.getByText("Comments · 2")).toBeTruthy();
+    expect(screen.getByText("Loved it", { exact: false }).textContent).toBe("Ben: Loved it");
+    expect(screen.queryByRole("button", { name: "Delete comment by Ben" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Delete comment by Chie" }));
+    fireEvent.change(screen.getByLabelText("Comment on Café X"), { target: { value: "  Nice  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect(await sent(2)).toEqual([
+      { path: "/places/p1/comments/k2", body: null },
+      { path: "/places/p1/comments", body: { body: "Nice" } },
+    ]);
+    cleanup();
+    await open({ ...crew, places: [withComments] }); // Ana owns the group
+    expect(screen.getByRole("button", { name: "Delete comment by Ben" })).toBeTruthy();
+  });
+
+  it("does not send an empty comment, and shows why a comment was refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const group = { ...crew, places: [place] };
+    await open(group);
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect(writes).toEqual([]);
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? { ok: false, status: 409, json: async () => ({ error: "The wishlist can hold 300 comments" }) }
+        : { ok: true, json: async () => group },
+    );
+    fireEvent.change(screen.getByLabelText("Comment on Café X"), { target: { value: "Hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("The wishlist can hold 300 comments");
+    expect((screen.getByLabelText("Comment on Café X") as HTMLInputElement).value).toBe("Hi");
+  });
 });
+

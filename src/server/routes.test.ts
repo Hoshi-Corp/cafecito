@@ -26,6 +26,9 @@ const outingRsvp = await import("@/app/api/groups/[id]/outings/[outingId]/rsvp/r
 const outingOne = await import("@/app/api/groups/[id]/outings/[outingId]/route");
 const places = await import("@/app/api/groups/[id]/places/route");
 const placeOne = await import("@/app/api/groups/[id]/places/[placeId]/route");
+const placeRating = await import("@/app/api/groups/[id]/places/[placeId]/rating/route");
+const placeComments = await import("@/app/api/groups/[id]/places/[placeId]/comments/route");
+const placeComment = await import("@/app/api/groups/[id]/places/[placeId]/comments/[commentId]/route");
 const placeVote = await import("@/app/api/groups/[id]/places/[placeId]/vote/route");
 const events = await import("@/app/api/groups/[id]/events/route");
 const join = await import("@/app/api/invites/[token]/route");
@@ -142,6 +145,33 @@ describe("wishlist routes", () => {
     expect((await placeVote.DELETE(req(), one(id))).status).toBe(200);
     expect((await placeOne.DELETE(req(), one(id))).status).toBe(200);
     expect((await get()).places).toEqual([]);
+  });
+});
+
+describe("wishlist rating and comment routes", () => {
+  it("rates, comments and deletes, with the rules of who may", async () => {
+    const one = (placeId: string, commentId = "") => ctx({ placeId, commentId });
+    as("camille");
+    await places.POST(req({ name: "Café X" }), ctx());
+    const { id } = getDb().prepare(`SELECT id FROM place`).get() as { id: string };
+    jar.clear();
+    expect((await placeRating.PUT(req({ stars: 4 }), one(id))).status).toBe(401);
+    expect((await placeComments.POST(req({ body: "hi" }), one(id))).status).toBe(401);
+    as("diego");
+    expect((await placeRating.PUT(req("x", "text/plain"), one(id))).status).toBe(415);
+    expect((await placeRating.PUT(req({ stars: 9 }), one(id))).status).toBe(400);
+    expect((await placeRating.PUT(req(null), one(id))).status).toBe(400);
+    expect((await placeRating.PUT(req({ stars: 4 }), one(id))).status).toBe(200);
+    expect((await placeComments.POST(req({ body: "Loved it" }), one(id))).status).toBe(200);
+    const { places: list } = await get();
+    expect(list[0]).toMatchObject({ ratings: { diego: 4 }, comments: [{ memberId: "diego", body: "Loved it" }] });
+    const commentId = list[0].comments[0].id;
+    as("sofia");
+    expect((await placeComment.DELETE(req(), one(id, commentId))).status).toBe(403);
+    as("diego");
+    expect((await placeRating.DELETE(req(), one(id))).status).toBe(200);
+    expect((await placeComment.DELETE(req(), one(id, commentId))).status).toBe(200);
+    expect((await get()).places[0]).toMatchObject({ ratings: {}, comments: [] });
   });
 });
 
