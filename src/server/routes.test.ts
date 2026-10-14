@@ -166,6 +166,31 @@ describe("outing routes", () => {
     }
   });
 
+  it("sends nothing when a deletion is refused", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const one = (outingId: string) => ctx({ outingId });
+    as("kenji");
+    expect((await push.PUT(req({ endpoint: "https://fcm.googleapis.com/fcm/send/kenji", keys: { p256dh: "BPkey", auth: "auth" } }), ctx())).status).toBe(200);
+    as("you");
+    expect((await outings.POST(req({ title: "Refused", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    const { id } = getDb().prepare(`SELECT id FROM outing WHERE title = 'Refused'`).get() as { id: string };
+    as("kenji");
+    expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200); // someone who would be told
+    sendNotification.mockClear();
+    as("diego"); // neither the proposer nor the owner
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(403);
+    as("you");
+    expect((await outingOne.DELETE(req(), one("no-such-plan"))).status).toBe(404);
+    await new Promise((resolve) => setTimeout(resolve, 20)); // a push, if one were started, would be underway by now
+    expect(sendNotification).not.toHaveBeenCalled();
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(200); // the allowed delete does push, to kenji
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1));
+    as("kenji");
+    await push.DELETE(req(), ctx());
+  });
+
   it("answers without waiting for a push service that never replies", async () => {
     const { members } = await get();
     const q = Math.floor(Date.now() / 900_000);

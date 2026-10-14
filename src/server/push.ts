@@ -111,7 +111,8 @@ async function notify(db: Db, audience: () => { targets: Target[]; message: Mess
   }
 }
 
-const within = (key: string, max: number) => {
+/** Counts one use of `key` and says whether it is still within `max` an hour. */
+const underLimit = (key: string, max: number) => {
   try {
     limit(key, max, 60 * MINUTE);
     return true;
@@ -124,8 +125,8 @@ const within = (key: string, max: number) => {
 // memory so a restart forgets them, so a loop of propose and delete cannot buzz everyone's phone. The plan itself still works.
 // Raise it if real use hits it.
 const mayPush = (actorId: string) => {
-  if (within(`push:${actorId}`, 10)) return true;
-  if (within(`push-logged:${actorId}`, 1)) console.warn("push skipped: this member already sent 10 notifications in the last hour"); // once an hour, so a loop cannot flood the log
+  if (underLimit(`push:${actorId}`, 10)) return true;
+  if (underLimit(`push-logged:${actorId}`, 1)) console.warn("push skipped: this member already sent 10 notifications in the last hour"); // once an hour, so a loop cannot flood the log
   return false;
 };
 

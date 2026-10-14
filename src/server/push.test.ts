@@ -226,6 +226,15 @@ describe("sending", () => {
     expect(sendNotification).toHaveBeenCalled();
   });
 
+  it("refuses to clear the hourly limit in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() => clearLimits()).toThrow(/for tests/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("does not use up the hourly limit when nobody has notifications on", async () => {
     const db = fresh(); // no devices
     for (let i = 0; i < 12; i++) await notifyProposed(db, "demo", "you");
