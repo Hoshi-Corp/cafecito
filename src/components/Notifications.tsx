@@ -54,7 +54,9 @@ export function Notifications() {
 
   const turnOn = async () => {
     if ((await Notification.requestPermission()) !== "granted") return setNote(BLOCKED);
-    const registration = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.register("/sw.js");
+    // register() returns before the worker runs, and subscribing needs a running one (the first tap would fail).
+    const registration = await navigator.serviceWorker.ready;
     // A subscription made with an earlier server key (a restored backup, say) makes subscribe() throw, so start clean.
     await (await registration.pushManager.getSubscription())?.unsubscribe();
     const sub = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(state.publicKey) });

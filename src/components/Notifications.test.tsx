@@ -35,7 +35,12 @@ function browser(
   };
   Object.defineProperty(navigator, "serviceWorker", {
     configurable: true,
-    value: { register: async () => ({ pushManager }), getRegistration: async () => ({ pushManager }) },
+    value: {
+      // Like a real browser: right after register() the worker is not active yet, so it cannot subscribe; `ready` waits for it.
+      register: async () => ({ pushManager: { ...pushManager, subscribe: async () => { throw new Error("no active Service Worker"); } } }),
+      ready: Promise.resolve({ pushManager }),
+      getRegistration: async () => ({ pushManager }),
+    },
   });
   vi.stubGlobal("PushManager", class {});
   vi.stubGlobal("Notification", { permission: start, requestPermission: async () => permission });
