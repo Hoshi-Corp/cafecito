@@ -43,7 +43,7 @@ src/components/Wishlist  the wishlist: add, edit, vote, rate, comment, mark visi
 src/components/Entry      create-group, join, "email me a link" and sign-in-link screens
 src/components/Account    my account: recovery email, devices, export, delete
 src/components/Notifications  the on/off switch for notifications on this device
-public/sw.js, src/app/manifest.ts  the service worker (shows a push, opens the app on a tap) and the web manifest
+public/sw.js, src/app/manifest.ts  the service worker (shows a push, opens the app on a tap), the web manifest, and the app icons in public/ (192, 512 and the iPhone Home Screen icon)
 src/components/Manage     owner: invite links, remove people
 src/components/WeekGrid   the paintable grid (pointer and keyboard)
 ```

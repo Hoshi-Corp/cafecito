@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Cafecito",
   description: "See when your friends are free",
+  icons: { apple: "/apple-touch-icon.png" }, // the Home Screen icon on iPhones, which push needs
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

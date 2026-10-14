@@ -6,6 +6,7 @@ import { Notifications } from "./Notifications";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   Reflect.deleteProperty(navigator, "serviceWorker");
 });
 
@@ -19,7 +20,7 @@ function browser(permission: NotificationPermission, subscribed = false) {
     value: { register: async () => ({ pushManager }), getRegistration: async () => ({ pushManager }) },
   });
   vi.stubGlobal("PushManager", class {});
-  vi.stubGlobal("Notification", { requestPermission: async () => permission });
+  vi.stubGlobal("Notification", { permission: "default", requestPermission: async () => permission });
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push(`${init?.method ?? "GET"} ${url}`);
     return { ok: true, json: async () => ({ publicKey: "BPkey_-", subscribed }) };
@@ -27,10 +28,19 @@ function browser(permission: NotificationPermission, subscribed = false) {
   return { calls, pushManager, subscription };
 }
 
-it("says why when the browser cannot do push", () => {
+it("says why when the browser cannot do push: no https, an iPhone, or just no support", () => {
   vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => ({}) }));
-  render(<Notifications />);
-  expect(screen.getByText(/secure \(https\) address/)).toBeTruthy();
+  const why = (secure: boolean, agent: string) => {
+    vi.stubGlobal("isSecureContext", secure);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(agent);
+    const { container, unmount } = render(<Notifications />);
+    const text = container.textContent;
+    unmount();
+    return text;
+  };
+  expect(why(false, "iPhone")).toMatch(/secure \(https\) address/);
+  expect(why(true, "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)")).toMatch(/Add to Home Screen/);
+  expect(why(true, "Mozilla/5.0 (X11; Linux)")).toMatch(/cannot show notifications/);
 });
 
 it("subscribes this device when the switch is turned on, and unsubscribes when it is turned off", async () => {
@@ -46,6 +56,13 @@ it("subscribes this device when the switch is turned on, and unsubscribes when i
   await waitFor(() => expect(box.checked).toBe(false));
   expect(subscription.unsubscribe).toHaveBeenCalled();
   expect(calls).toContain("DELETE /api/groups/me/me/push");
+});
+
+it("says so up front when notifications were already blocked", async () => {
+  browser("denied");
+  vi.stubGlobal("Notification", { permission: "denied", requestPermission: async () => "denied" });
+  render(<Notifications />);
+  expect((await screen.findByRole("status")).textContent).toMatch(/blocked/);
 });
 
 it("stays off and explains when the person blocks notifications", async () => {

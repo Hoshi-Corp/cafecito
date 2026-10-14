@@ -1,7 +1,7 @@
 // Shows a push message and opens the app when it is tapped. No caching: the app is not offline-capable.
 self.addEventListener("push", (event) => {
   const { title = "Cafecito", body = "" } = event.data?.json() ?? {};
-  event.waitUntil(self.registration.showNotification(title, { body, icon: "/favicon.ico" }));
+  event.waitUntil(self.registration.showNotification(title, { body, icon: "/icon-192.png" }));
 });
 
 self.addEventListener("notificationclick", (event) => {
