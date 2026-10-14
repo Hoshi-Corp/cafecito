@@ -17,7 +17,8 @@ it("lists live invites, creates a link shown once, revokes, and removes a member
   const calls: string[] = [];
   let invites = [{ id: "i1", expiresAt: Date.now() + 86_400_000, maxUses: 3, uses: 1 }];
   vi.stubGlobal("location", { origin: "https://cafe.test" });
-  vi.stubGlobal("confirm", () => true);
+  const asked: string[] = [];
+  vi.stubGlobal("confirm", (q: string) => (asked.push(q), true));
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push(`${init?.method ?? "GET"} ${url}`);
     if (url.endsWith("/invites") && init?.method === "POST") return { ok: true, json: async () => ({ id: "i2", token: "tok" }) };
@@ -36,6 +37,7 @@ it("lists live invites, creates a link shown once, revokes, and removes a member
 
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Remove" })));
   expect(calls).toContain("DELETE /api/groups/me/members/b");
+  expect(asked.at(-1)).toBe("Remove Ben? Their availability is deleted. Their plans, wishlist places and comments stay, without their name.");
 });
 
 it("shows the server's reason when an invite cannot be made", async () => {

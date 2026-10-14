@@ -93,7 +93,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `GET`, `DELETE /api/groups/:id/me/sessions` | List my signed-in devices; sign out the others |
 | `GET`, `POST /api/groups/:id/invites` | List live invites, create one (owner); the token is returned once |
 | `DELETE /api/groups/:id/invites/:inviteId` | Revoke an invite (owner) |
-| `DELETE /api/groups/:id/members/:memberId` | Remove a member (owner) |
+| `DELETE /api/groups/:id/members/:memberId` | Remove a member (owner); their plans, wishlist places and comments stay without their name |
 | `POST /api/groups/:id/me/access-link` | Replace my personal sign-in link; the token is returned once |
 | `POST /api/groups/:id/members/:memberId/access-link` | Replace a member's personal link (owner); the token is returned once |
 | `GET /api/invites/:token` | What the join screen shows: group name, who is in it |
