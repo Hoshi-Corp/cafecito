@@ -48,12 +48,28 @@ export function exportMe(db: Db, memberId: string) {
   const sessions = db
     .prepare(`SELECT device, created_at, last_seen FROM session WHERE member_id = ? ORDER BY created_at`)
     .all(memberId) as { device: string; created_at: number; last_seen: number }[];
+  const plans = db
+    .prepare(
+      `SELECT o.title, o.place, o.start_q s, o.end_q e, o.created_by = @m proposedByMe, r.answer
+       FROM outing o LEFT JOIN rsvp r ON r.outing_id = o.id AND r.member_id = @m
+       WHERE o.created_by = @m OR r.member_id = @m ORDER BY o.start_q`,
+    )
+    .all({ m: memberId }) as { title: string; place: string; s: number; e: number; proposedByMe: number; answer: string | null }[];
   return {
     exportedAt: new Date().toISOString(),
     ...me,
     typicalWeekFormat: "672 characters, one per 15 minutes from Monday 00:00 in timeZone: f free, m maybe, . not marked",
     overrides: overrides.map((o) => ({ from: iso(o.s * QUANTUM_MS), to: iso(o.e * QUANTUM_MS), mark: o.mark })),
     overridesFormat: "UTC times; mark f free, m maybe, b busy",
+    plans: plans.map((p) => ({
+      title: p.title,
+      place: p.place,
+      from: iso(p.s * QUANTUM_MS),
+      to: iso(p.e * QUANTUM_MS),
+      proposedByMe: p.proposedByMe === 1,
+      myAnswer: p.answer,
+    })),
+    plansFormat: "plans I proposed or answered; UTC times; myAnswer y yes, m maybe, n no, null none",
     devices: sessions.map((s) => ({ device: s.device, signedIn: iso(s.created_at), lastUsed: iso(s.last_seen) })),
   };
 }
