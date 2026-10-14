@@ -172,7 +172,16 @@ describe("my data", () => {
     updateMe(db, "camille", { email: "cam@example.org" });
     const q = toQuantum(Date.UTC(2026, 9, 14, 18));
     patchOverrides(db, "camille", { set: { [q]: "b", [q + 1]: "b" } });
+    const plan = db.prepare(`INSERT INTO outing (id, group_id, title, place, start_q, end_q, created_by) VALUES (?, 'demo', ?, ?, ?, ?, ?)`);
+    plan.run("mine", "Brunch", "Café X", q + 8, q + 12, "camille");
+    plan.run("theirs", "Hike", "", q + 20, q + 24, "diego");
+    plan.run("unrelated", "Movie", "", q + 30, q + 34, "diego");
+    db.prepare(`INSERT INTO rsvp (outing_id, member_id, answer) VALUES ('mine', 'camille', 'y'), ('theirs', 'camille', 'm'), ('unrelated', 'diego', 'y')`).run();
     const data = exportMe(db, "camille");
+    expect(data.plans).toEqual([
+      { title: "Brunch", place: "Café X", from: new Date((q + 8) * QUANTUM_MS).toISOString(), to: new Date((q + 12) * QUANTUM_MS).toISOString(), proposedByMe: true, myAnswer: "y" },
+      { title: "Hike", place: "", from: new Date((q + 20) * QUANTUM_MS).toISOString(), to: new Date((q + 24) * QUANTUM_MS).toISOString(), proposedByMe: false, myAnswer: "m" },
+    ]);
     expect(data).toMatchObject({
       group: "Café crew",
       name: "Camille",
