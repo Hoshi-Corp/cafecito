@@ -240,12 +240,22 @@ function PlaceForm({
 const EMPTY: Fields = { name: "", link: "", mapLink: "", notes: "" };
 
 function AddPlace() {
-  // A new key after each add empties the form again.
-  const [added, setAdded] = useState(0);
+  // A new key empties the form: after each add, and when it is cancelled (which also closes the panel).
+  const [round, setRound] = useState(0);
+  const [open, setOpen] = useState(false);
   return (
-    <details className="mt-3 text-sm">
+    <details className="mt-3 text-sm" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="cursor-pointer font-medium">Add a place</summary>
-      <PlaceForm key={added} initial={EMPTY} submitLabel="Add" onSubmit={addPlace} onDone={(saved) => setAdded(added + (saved ? 1 : 0))} />
+      <PlaceForm
+        key={round}
+        initial={EMPTY}
+        submitLabel="Add"
+        onSubmit={addPlace}
+        onDone={(saved) => {
+          setRound(round + 1);
+          if (!saved) setOpen(false);
+        }}
+      />
     </details>
   );
 }

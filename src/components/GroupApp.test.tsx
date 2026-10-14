@@ -432,6 +432,20 @@ describe("wishlist", () => {
     await vi.waitFor(() => expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(""));
   });
 
+  it("cancels adding a place: the typed text is gone and the panel closes", async () => {
+    await open();
+    const panel = screen.getByText("Add a place").closest("details")!;
+    fireEvent.click(screen.getByText("Add a place"));
+    await act(() => new Promise((r) => setTimeout(r, 0))); // the browser reports the toggle in a later task
+    expect(panel.open).toBe(true);
+    const form = within(panel);
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "Café Y" } });
+    fireEvent.click(form.getByRole("button", { name: "Cancel" }));
+    await vi.waitFor(() => expect(panel.open).toBe(false));
+    expect((form.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+    expect(writes).toEqual([]);
+  });
+
   it("sends once however often Add is pressed, and shows why a place was refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     await open();
