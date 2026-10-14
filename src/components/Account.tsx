@@ -50,7 +50,9 @@ export function Account({ group }: { group: Group }) {
         : others.length
           ? ` You own this group: ${others[0].name.trim() || "the next person"} becomes its owner.`
           : " Nobody else is in this group, so it is deleted too.";
-    if (!confirm(`Delete your account? Your availability is deleted and every device is signed out.${consequence}`)) return;
+    // With nobody else left the whole group goes, so there is nothing that stays behind.
+    const stays = others.length ? " Plans, wishlist places and comments you wrote stay in the group, without your name." : "";
+    if (!confirm(`Delete your account? Your availability is deleted and every device is signed out.${stays}${consequence}`)) return;
     await call("/me", "DELETE");
     retryLoad();
   };

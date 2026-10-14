@@ -88,7 +88,7 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `PATCH /api/groups/:id` | Change the slot size (owner) |
 | `GET /api/groups/:id/me` | Export my data (a JSON file) |
 | `PATCH /api/groups/:id/me` | Change my name, color, time zone, typical week or recovery email |
-| `DELETE /api/groups/:id/me` | Delete my account and data |
+| `DELETE /api/groups/:id/me` | Delete my account and data; plans, wishlist places and comments I wrote stay in the group without my name |
 | `PATCH /api/groups/:id/me/overrides` | Add or remove my overrides |
 | `GET`, `DELETE /api/groups/:id/me/sessions` | List my signed-in devices; sign out the others |
 | `GET`, `POST /api/groups/:id/invites` | List live invites, create one (owner); the token is returned once |

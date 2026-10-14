@@ -62,11 +62,13 @@ it("deletes my account after a warning that says what happens to the group", asy
   const del = () => act(async () => fireEvent.click(screen.getByRole("button", { name: "Delete my account" })));
   await del();
   expect(asked[0]).toMatch(/Ben becomes its owner/);
+  expect(asked[0]).toMatch(/Plans, wishlist places and comments you wrote stay in the group, without your name/);
   expect(calls.some((c) => c.startsWith("DELETE /api/groups/me/me "))).toBe(false);
 
   rerender(<Account group={{ ...group, members: [group.members[0]] }} />);
   await del();
   expect(asked[1]).toMatch(/deleted too/);
+  expect(asked[1]).not.toMatch(/stay in the group/); // the group goes with them, nothing stays
   rerender(<Account group={{ ...group, meId: "b" }} />);
   answer = true;
   await del();
