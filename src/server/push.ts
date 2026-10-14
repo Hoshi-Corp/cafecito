@@ -4,6 +4,7 @@ import { HttpError, isObject } from "./groups";
 
 // Web push: which devices want notifications. Nothing is sent from here yet.
 
+// shortcut: a member's sixth device silently replaces their oldest; add a "devices" list to Settings if that confuses anyone.
 export const MAX_DEVICES = 5;
 
 /** The server's public VAPID key, which browsers need to subscribe. The pair is made on first use and kept in the database. */
@@ -23,6 +24,7 @@ export const pushState = (db: Db, tokenHash: string) => ({
   subscribed: db.prepare(`SELECT 1 FROM push_subscription WHERE token_hash = ?`).get(tokenHash) !== undefined,
 });
 
+// shortcut: key length is capped at 200 characters (real keys are under 90); loosen if a browser ever sends longer ones.
 const BASE64URL = /^[A-Za-z0-9_-]{1,200}$/;
 const isHttps = (s: string) => {
   try {

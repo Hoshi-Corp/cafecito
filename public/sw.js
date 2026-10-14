@@ -1,4 +1,5 @@
-// Shows a push message and opens the app when it is tapped. No caching: the app is not offline-capable.
+// Shows a push message and opens the app when it is tapped.
+// shortcut: no caching, so the app does not work offline; add a fetch handler only if that becomes a goal.
 self.addEventListener("push", (event) => {
   let message = {};
   try {
