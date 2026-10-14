@@ -63,7 +63,7 @@ export function exportMe(db: Db, memberId: string) {
                 (SELECT stars FROM place_rating r WHERE r.place_id = p.id AND r.member_id = @m) myStars,
                 EXISTS (SELECT 1 FROM place_comment c WHERE c.place_id = p.id AND c.member_id = @m) commented,
                 p.deleted_at IS NOT NULL removed, p.created_at createdAt, p.rowid rid
-         FROM place p
+         FROM place p WHERE p.group_id = (SELECT group_id FROM member WHERE id = @m)
        ) WHERE suggestedByMe OR votedByMe OR myStars IS NOT NULL OR commented ORDER BY createdAt, rid`,
     )
     .all({ m: memberId }) as { id: string; name: string; link: string; mapLink: string; notes: string; beenThere: number; suggestedByMe: number | null; votedByMe: number; myStars: number | null; removed: number }[];
