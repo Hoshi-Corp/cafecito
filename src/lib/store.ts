@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Group, GroupEvent, Member, OverrideChange, OverrideMark, SlotMinutes } from "./types";
+import type { Group, GroupEvent, Member, OverrideChange, OverrideMark, Rsvp, SlotMinutes } from "./types";
 
 // Server-backed store. The UI edits a local copy right away and each change is sent as a
 // per-member write (see docs/ARCHITECTURE.md); a failed write reloads the group from the server.
@@ -103,23 +103,33 @@ async function load() {
   }
 }
 
-/** Sends one write after the previous one, so changes land in the order they were made. */
-function send(path: string, method: "PATCH", body: unknown) {
+/**
+ * Sends one write after the previous one, so changes land in the order they were made.
+ * Resolves to the server's refusal message (or a generic one), or null once the write is saved.
+ */
+function send(path: string, method: "PATCH" | "POST" | "PUT" | "DELETE", body?: unknown): Promise<string | null> {
   pending++;
-  queue = queue
+  let refusal: string | null = null;
+  const run = queue
     .then(async () => {
       const res = await fetch(BASE + path, {
         method,
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: body === undefined ? undefined : JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`);
+      if (!res.ok) {
+        refusal = (await res.json().catch(() => null))?.error ?? "Could not save that. Try again.";
+        throw new Error(`${method} ${path}: ${res.status}`);
+      }
     })
     .catch((e) => {
       console.error("Change not saved, reloading", e);
+      refusal ??= "Could not save that. Try again.";
       return load();
     })
     .finally(() => pending--);
+  queue = run;
+  return run.then(() => refusal);
 }
 
 function subscribe(listener: () => void) {
@@ -178,3 +188,19 @@ export function updateMember(id: string, change: (member: Member) => Member) {
   const remove = Object.keys(before.overrides).map(Number).filter((q) => !(q in after.overrides));
   if (Object.keys(setMarks).length || remove.length) send("/me/overrides", "PATCH", { set: setMarks, remove });
 }
+
+// Outings are not painted optimistically. The server's reload event brings the new list to every browser; with the live
+// stream down (say a proxy blocks it) a saved write loads the group itself. Each resolves to an error message to show, or null.
+async function outingWrite(...args: Parameters<typeof send>) {
+  const error = await send(...args);
+  if (!error && !connected) await load();
+  return error;
+}
+
+export const proposeOuting = (outing: { title: string; place: string; startQ: number; endQ: number }) =>
+  outingWrite("/outings", "POST", outing);
+
+export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>
+  outingWrite(`/outings/${id}/rsvp`, "PUT", { answer, markBusy });
+
+export const removeOuting = (id: string) => outingWrite(`/outings/${id}`, "DELETE");

@@ -34,6 +34,8 @@ export interface Group {
   email?: string | null;
   /** Whether this server can send sign-in links by email. */
   recovery?: boolean;
+  /** Proposed outings, soonest first. */
+  outings?: Outing[];
 }
 
 export interface OverrideChange {

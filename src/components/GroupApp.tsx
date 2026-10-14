@@ -27,6 +27,7 @@ import { SLOT_OPTIONS, type Group, type Mark, type Member, type OverrideMark } f
 import { Account } from "./Account";
 import { ColorPicker, Landing } from "./Entry";
 import { Manage } from "./Manage";
+import { Outings, ProposeForm } from "./Outings";
 import { WeekGrid, type CellRange, type GridColumn, type GridRow } from "./WeekGrid";
 
 type Tab = "group" | "mine" | "typical";
@@ -119,6 +120,7 @@ function GroupView({ group }: { group: Group }) {
   const [brush, setBrush] = useState<Brush>("f");
   const [scrollTouches, setScrollTouches] = useState(false);
   const [selectedQ, setSelectedQ] = useState<number | null>(null);
+  const [proposing, setProposing] = useState<MeetWindow | null>(null);
   const recent = useRecentChange();
 
   const me = group.members.find((m) => m.id === group.meId) ?? group.members[0];
@@ -231,7 +233,9 @@ function GroupView({ group }: { group: Group }) {
         ))}
       </ul>
 
-      <BestWindows windows={windows} total={active.length} zone={zone} onPick={showWindow} />
+      <BestWindows windows={windows} total={active.length} zone={zone} onPick={showWindow} onPropose={setProposing} />
+      {proposing && <ProposeForm key={proposing.startQ} window={proposing} zone={zone} onDone={() => setProposing(null)} />}
+      <Outings group={group} zone={zone} now={now} />
       {waiting.length > 0 && (
         <p className="-mt-2 text-xs text-muted">
           Not counted yet, nothing marked: {waiting.map(nameOf).join(", ")}.
@@ -403,11 +407,13 @@ function BestWindows({
   total,
   zone,
   onPick,
+  onPropose,
 }: {
   windows: MeetWindow[];
   total: number;
   zone: string;
   onPick: (w: MeetWindow) => void;
+  onPropose: (w: MeetWindow) => void;
 }) {
   return (
     <section className="rounded-xl border border-line bg-card p-3">
@@ -423,10 +429,10 @@ function BestWindows({
       ) : (
         <ul className="flex flex-col">
           {windows.map((w) => (
-            <li key={w.startQ}>
+            <li key={w.startQ} className="flex items-center gap-1">
               <button
                 onClick={() => onPick(w)}
-                className="flex w-full flex-wrap items-baseline justify-between gap-x-3 rounded-md px-1.5 py-1 text-left text-sm hover:bg-background"
+                className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 rounded-md px-1.5 py-1 text-left text-sm hover:bg-background"
               >
                 <span>
                   <span className="font-medium">{day(w.startQ, zone)}</span>{" "}
@@ -438,6 +444,13 @@ function BestWindows({
                   {w.free.length === total ? "Everyone" : `${w.free.length} of ${total}`}
                   {w.maybe.length > 0 && ` · ${w.maybe.map(nameOf).join(", ")} maybe`}
                 </span>
+              </button>
+              <button
+                onClick={() => onPropose(w)}
+                aria-label={`Propose ${day(w.startQ, zone)} ${time(w.startQ, zone)}`}
+                className="shrink-0 rounded-md border border-line px-2 py-1 text-xs"
+              >
+                Propose
               </button>
             </li>
           ))}

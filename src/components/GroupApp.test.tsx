@@ -49,7 +49,7 @@ let writes: { path: string; body: Record<string, unknown> }[] = [];
 async function open(group: Group = crew) {
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (init?.method) {
-      const body = JSON.parse(init.body as string);
+      const body = init.body ? JSON.parse(init.body as string) : null;
       writes.push({ path: url.replace("/api/groups/me", ""), body });
     }
     return { ok: true, json: async () => group };
@@ -107,7 +107,7 @@ describe("group tab", () => {
   it("ranks the best times: everyone first, then the largest partial groups with their maybes", async () => {
     await open();
     const best = screen.getByText("Best times in the next two weeks").parentElement!;
-    const lines = [...best.querySelectorAll("button")].map((b) => b.lastElementChild!.textContent);
+    const lines = [...best.querySelectorAll("li > button:first-child")].map((b) => b.lastElementChild!.textContent);
     expect(lines).toEqual(["Everyone", "Everyone", ...Array(3).fill("3 of 4 · Eli maybe")]);
   });
 
@@ -327,3 +327,80 @@ describe("settings", () => {
     expect(await sent(1)).toEqual([{ path: "/invites", body: { days: 7, maxUses: null } }]);
   });
 });
+
+describe("outings", () => {
+  const outing = { id: "o1", title: "Brunch", place: "Café X", startQ: Date.now() / 900_000 + 100, endQ: Date.now() / 900_000 + 104, createdBy: "b", rsvps: { b: "y" as const } };
+
+  it("proposes a best time with a title and place", async () => {
+    await open();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
+    fireEvent.change(screen.getByLabelText("Where (optional)"), { target: { value: "Café Y" } });
+    fireEvent.click(screen.getByRole("button", { name: "Propose" }));
+    const [w] = await sent(1);
+    expect(w).toMatchObject({ path: "/outings", body: { title: "Coffee", place: "Café Y" } });
+    await vi.waitFor(() => expect(screen.queryByLabelText("What")).toBeNull());
+  });
+
+  it("sends a proposal once however often Propose is pressed", async () => {
+    await open();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
+    const form = screen.getByLabelText("What").closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(await sent(1)).toHaveLength(1);
+    await vi.waitFor(() => expect(screen.queryByLabelText("What")).toBeNull());
+    expect(writes).toHaveLength(1);
+  });
+
+  it("keeps the form open and shows the server's reason when a proposal is refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await open();
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? { ok: false, status: 409, json: async () => ({ error: "That time is no longer free for the group" }) }
+        : { ok: true, json: async () => crew },
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
+    fireEvent.click(screen.getByRole("button", { name: "Propose" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("That time is no longer free for the group");
+    expect((screen.getByLabelText("What") as HTMLInputElement).value).toBe("Coffee");
+  });
+
+  it("does not accept a title of only spaces", async () => {
+    await open();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "  " } });
+    expect((screen.getByLabelText("What") as HTMLInputElement).validity.valid).toBe(false);
+  });
+
+  it("lists plans with who answered, sends my answer, and hides delete from people who did not propose it", async () => {
+    await open({ ...crew, meId: "c", outings: [outing] });
+    expect(screen.getByText("Brunch")).toBeTruthy();
+    expect(screen.getByText("Yes: Ben")).toBeTruthy();
+    expect(screen.queryByText("Delete")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Mark busy in my week when I say yes"));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(await sent(1)).toEqual([{ path: "/outings/o1/rsvp", body: { answer: "y", markBusy: true } }]);
+  });
+
+  it("marks busy right away when ticked after already saying yes", async () => {
+    await open({ ...crew, outings: [outing] });
+    fireEvent.click(screen.getByLabelText("Mark busy in my week when I say yes"));
+    expect(await sent(0)).toEqual([]);
+    cleanup();
+    await open({ ...crew, meId: "b", outings: [outing] });
+    fireEvent.click(screen.getByLabelText("Mark busy in my week when I say yes"));
+    expect(await sent(1)).toEqual([{ path: "/outings/o1/rsvp", body: { answer: "y", markBusy: true } }]);
+  });
+
+  it("lets the owner delete a plan", async () => {
+    vi.stubGlobal("confirm", () => true);
+    await open({ ...crew, outings: [outing] });
+    fireEvent.click(screen.getByText("Delete"));
+    expect(await sent(1)).toEqual([{ path: "/outings/o1", body: null }]);
+  });
+});
+
