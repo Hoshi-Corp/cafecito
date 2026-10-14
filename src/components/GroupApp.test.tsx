@@ -342,6 +342,13 @@ describe("outings", () => {
     expect(screen.queryByLabelText("What")).toBeNull();
   });
 
+  it("does not accept a title of only spaces", async () => {
+    await open();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
+    fireEvent.change(screen.getByLabelText("What"), { target: { value: "  " } });
+    expect((screen.getByLabelText("What") as HTMLInputElement).validity.valid).toBe(false);
+  });
+
   it("lists plans with who answered, sends my answer, and hides delete from people who did not propose it", async () => {
     await open({ ...crew, meId: "c", outings: [outing] });
     expect(screen.getByText("Brunch")).toBeTruthy();

@@ -40,14 +40,14 @@ export function ProposeForm({
       className="flex flex-col gap-2 rounded-xl border border-line bg-card p-3 text-sm"
       onSubmit={(e) => {
         e.preventDefault();
-        proposeOuting({ title, place, ...slot });
+        proposeOuting({ title: title.trim(), place, ...slot });
         onDone();
       }}
     >
       <h2 className="font-medium">Propose {when(slot, zone)}</h2>
       <label className="flex flex-col gap-1">
         <span className="text-xs text-muted">What</span>
-        <input className={field} value={title} maxLength={80} required autoFocus onChange={(e) => setTitle(e.target.value)} />
+        <input className={field} value={title} maxLength={80} required pattern=".*\S.*" autoFocus onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs text-muted">Where (optional)</span>
