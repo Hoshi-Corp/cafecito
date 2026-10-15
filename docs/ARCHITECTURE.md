@@ -106,9 +106,9 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `GET /api/sign-in` | Whether email sign-in is on |
 | `POST /api/sign-in` | Email a sign-in link to a recovery address |
 | `POST /api/sign-in/link` | Sign in with a personal or emailed link (token in the body, not the URL); creates a session |
-| `POST /api/groups/:id/outings` | (Sends a notification to the other members' devices.) Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; it may point at a wishlist place of the group (`placeId`, whose name stands in for an empty place); the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id` |
+| `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; it may point at a wishlist place of the group (`placeId`, whose name stands in for an empty place); the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id`. Notifies the other members' devices |
 | `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
-| `DELETE /api/groups/:id/outings/:outingId` | (Sends a notification to the members who said yes.) Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there |
+| `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there. Notifies the members who said yes |
 | `POST /api/groups/:id/places` | Add a café or restaurant to the wishlist (name, optional website and map link, notes; http(s) links only; up to 100 on the list, 500 counting removed ones); the places come with `GET /api/groups/:id` |
 | `PATCH /api/groups/:id/places/:placeId` | Edit the details (whoever suggested it, or the owner), or mark it as visited (anyone in the group) |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/vote` | Add or take back my own "I want to go" vote |

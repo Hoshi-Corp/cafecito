@@ -113,9 +113,9 @@ async function notify(db: Db, audience: () => { targets: Target[]; message: Mess
 
 const NOTIFICATIONS_PER_HOUR = 10;
 
-// shortcut: at most 10 notifications (a proposal or a deletion, each reaching all the other devices) per member per hour, counted in
-// memory so a restart forgets them, so a loop of propose and delete cannot buzz everyone's phone. The plan itself still works.
-// Raise it if real use hits it.
+// shortcut: at most 10 notifications per member per hour (a proposal or a deletion each counts once, however many devices it reaches),
+// so a loop of propose and delete cannot buzz everyone's phone. The plan itself still works. Counted in memory, so a restart forgets
+// them. Raise the number if real use hits it.
 const mayPush = (actorId: string) => {
   if (withinLimit(`push:${actorId}`, NOTIFICATIONS_PER_HOUR, 60 * MINUTE)) return true;
   // Logged once an hour, so a loop cannot flood the log.
