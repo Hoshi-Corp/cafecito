@@ -62,7 +62,7 @@ Exit: lose every device, open the saved link on a new one, and be back in the gr
 ## Next minor release
 
 ### 1.1 Events, notifications, wishlist and multiple groups
-Brings together four features from the earlier plan. Events and the wishlist are built and on `main`; notifications are in progress (devices can opt in, nothing is sent yet) and multiple groups is not started. Ship order inside the release is open; notifications depend on events, which are done. Upgrading from 1.0.x runs migrations 5 to 11 on first start (all additive, one table is rebuilt with its rows copied); take the backup first, see [DEPLOY](DEPLOY.md#upgrade-notes).
+Brings together four features from the earlier plan. Events and the wishlist are built and on `main`; notifications are built for two cases (more are not planned yet) and multiple groups is not started. Ship order inside the release is open; notifications depend on events, which are done. Upgrading from 1.0.x runs migrations 5 to 11 on first start (all additive, one table is rebuilt with its rows copied); take the backup first, see [DEPLOY](DEPLOY.md#upgrade-notes).
 
 #### Turn a slot into an event: built
 - ✅ **Propose** a best time from the group screen with a title and place. It must lie inside a window where the group is free, last at most 4 hours, and a group holds up to 50 plans. The proposer counts as yes and their time turns busy.
@@ -71,10 +71,11 @@ Brings together four features from the earlier plan. Events and the wishlist are
 - ✅ "Export my data" lists the plans I proposed or answered.
 - Not built: changing the title, place or time of a plan after proposing it.
 
-#### Notifications: in progress
+#### Notifications: built (two kinds)
 Design settled (see [architecture](ARCHITECTURE.md#notifications)): web push only, two triggers (someone proposed a plan; a plan you said yes to was deleted), one on/off switch per device, name-only messages.
 - ✅ **Devices can turn notifications on or off** in Settings: service worker, web manifest, subscriptions stored per session, the server's push key made on first use.
-- Not built: **sending** them. Also not planned yet: "a new window where everyone is free", a weekly reminder, and muting each type separately.
+- ✅ **Sent** to everyone else's devices when someone proposes a plan, and to the members who said yes when a plan is deleted (not to the person who did it). The text is the person's name and the group's name, never the plan; delivery is in the background with no retries, and a device the push service reports as gone is forgotten; one member can cause at most 10 notifications an hour.
+- Not built: "a new window where everyone is free", a weekly reminder, and muting each type separately.
 
 #### Café and restaurant wishlist: built
 - ✅ **A shared list per group**: name, website, map link, notes, who suggested it, "been there" flag, and "I want to go" votes. Links must be `http(s)`. Up to 100 places on the list.

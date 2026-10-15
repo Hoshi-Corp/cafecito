@@ -10,6 +10,8 @@ vi.mock("next/headers", () => ({
   }),
 }));
 const { sendMail } = vi.hoisted(() => ({ sendMail: vi.fn<(mail: { to: string; text: string }) => Promise<void>>(async () => {}) }));
+const { sendNotification } = vi.hoisted(() => ({ sendNotification: vi.fn<(sub: { endpoint: string }, payload: string) => Promise<unknown>>(async () => ({})) }));
+vi.mock("web-push", async (original) => ({ default: { ...(await original<{ default: object }>()).default, sendNotification } }));
 vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail }) } }));
 process.env.CAFECITO_DB = ":memory:";
 process.env.CAFECITO_DEMO = "1";
@@ -39,6 +41,7 @@ const push = await import("@/app/api/groups/[id]/me/push/route");
 const signIn = await import("@/app/api/sign-in/route");
 const signInLink = await import("@/app/api/sign-in/link/route");
 const { handle, SESSION_COOKIE } = await import("./http");
+const { clearLimits } = await import("./limit");
 const { subscribe } = await import("./events");
 const { getDb } = await import("./db");
 const { bestWindows, isSetUp } = await import("@/lib/availability");
@@ -56,6 +59,7 @@ const get = async () => (await group.GET(req(), ctx())).json();
 const profile = { name: "Zed", color: "#112233", timeZone: "Europe/Paris" };
 
 beforeEach(() => {
+  clearLimits();
   jar.clear();
   as("you");
 });
@@ -104,6 +108,120 @@ describe("API routes", () => {
 });
 
 describe("outing routes", () => {
+  it("pushes to the other members' devices when a plan is proposed, and to those who said yes when it is deleted", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const one = (outingId: string) => ctx({ outingId });
+    const sub = (name: string) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${name}`, keys: { p256dh: "BPkey", auth: "auth" } });
+    for (const who of ["you", "kenji", "diego"]) {
+      as(who);
+      expect((await push.PUT(req(sub(who)), ctx())).status).toBe(200);
+    }
+    sendNotification.mockClear();
+    as("you");
+    expect((await outings.POST(req({ title: "Secret brunch", place: "Hidden Café", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(2));
+    expect(sendNotification.mock.calls.map(([s]) => s.endpoint.split("/").pop()).sort()).toEqual(["diego", "kenji"]);
+    const text = JSON.stringify(sendNotification.mock.calls.map(([, payload]) => payload));
+    expect(text).toMatch(/proposed a plan/);
+    expect(text).not.toMatch(/Secret brunch|Hidden/); // the plan's details never leave the server
+    const { id } = getDb().prepare(`SELECT id FROM outing WHERE title = 'Secret brunch'`).get() as { id: string };
+    as("kenji");
+    expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200);
+    as("diego");
+    expect((await outingRsvp.PUT(req({ answer: "m" }), one(id))).status).toBe(200); // maybe: not told
+    sendNotification.mockClear();
+    as("you");
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(200);
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1));
+    expect(sendNotification.mock.calls[0][0].endpoint).toMatch(/kenji$/);
+    expect(sendNotification.mock.calls[0][1]).toContain("deleted a plan you said yes to");
+    for (const who of ["you", "kenji", "diego"]) {
+      as(who);
+      await push.DELETE(req(), ctx()); // leave the shared demo members as other tests expect them
+    }
+  });
+
+  it("tells the proposer, not the owner, when the owner deletes someone else's plan", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const sub = (name: string) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${name}`, keys: { p256dh: "BPkey", auth: "auth" } });
+    for (const who of ["you", "diego"]) {
+      as(who);
+      expect((await push.PUT(req(sub(who)), ctx())).status).toBe(200);
+    }
+    as("diego");
+    expect((await outings.POST(req({ title: "Diego's plan", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    const { id } = getDb().prepare(`SELECT id FROM outing WHERE title = 'Diego''s plan'`).get() as { id: string };
+    sendNotification.mockClear();
+    as("you"); // the owner
+    expect((await outingOne.DELETE(req(), ctx({ outingId: id }))).status).toBe(200);
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1));
+    expect(sendNotification.mock.calls[0][0].endpoint).toMatch(/diego$/);
+    for (const who of ["you", "diego"]) {
+      as(who);
+      await push.DELETE(req(), ctx());
+    }
+  });
+
+  it("sends nothing when a deletion is refused", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    const one = (outingId: string) => ctx({ outingId });
+    as("kenji");
+    expect((await push.PUT(req({ endpoint: "https://fcm.googleapis.com/fcm/send/kenji", keys: { p256dh: "BPkey", auth: "auth" } }), ctx())).status).toBe(200);
+    as("you");
+    expect((await outings.POST(req({ title: "Refused", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    const { id } = getDb().prepare(`SELECT id FROM outing WHERE title = 'Refused'`).get() as { id: string };
+    as("kenji");
+    expect((await outingRsvp.PUT(req({ answer: "y" }), one(id))).status).toBe(200); // someone who would be told
+    sendNotification.mockClear();
+    as("diego"); // neither the proposer nor the owner
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(403);
+    as("you");
+    expect((await outingOne.DELETE(req(), one("no-such-plan"))).status).toBe(404);
+    await new Promise((resolve) => setTimeout(resolve, 20)); // a push, if one were started, would be underway by now
+    expect(sendNotification).not.toHaveBeenCalled();
+    expect((await outingOne.DELETE(req(), one(id))).status).toBe(200); // the allowed delete does push, to kenji
+    await vi.waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1));
+    as("kenji");
+    await push.DELETE(req(), ctx());
+  });
+
+  it("answers without waiting for a push service that never replies", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    as("kenji");
+    expect((await push.PUT(req({ endpoint: "https://fcm.googleapis.com/fcm/send/kenji", keys: { p256dh: "BPkey", auth: "auth" } }), ctx())).status).toBe(200);
+    sendNotification.mockClear();
+    sendNotification.mockImplementationOnce(() => new Promise(() => {}));
+    as("you");
+    expect((await outings.POST(req({ title: "Slow", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200); // a timeout here means the route waited
+    expect(sendNotification).toHaveBeenCalledTimes(1);
+    as("kenji");
+    await push.DELETE(req(), ctx());
+  });
+
+  it("still answers when the push service fails", async () => {
+    const { members } = await get();
+    const q = Math.floor(Date.now() / 900_000);
+    const [w] = bestWindows(members.filter(isSetUp), q + 1, q + 1 + 14 * 96);
+    as("sofia");
+    expect((await push.PUT(req({ endpoint: "https://fcm.googleapis.com/fcm/send/sofia", keys: { p256dh: "BPkey", auth: "auth" } }), ctx())).status).toBe(200);
+    sendNotification.mockClear();
+    sendNotification.mockRejectedValueOnce(Object.assign(new Error("down"), { statusCode: 503 }));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    as("you");
+    expect((await outings.POST(req({ title: "Lunch", startQ: w.startQ, endQ: w.startQ + 4 }), ctx())).status).toBe(200);
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith("push failed:", 503));
+    log.mockRestore();
+    as("sofia");
+    await push.DELETE(req(), ctx());
+  });
   it("needs a session and JSON, then proposes, answers and deletes", async () => {
     const { members } = await get();
     const q = Math.floor(Date.now() / 900_000);

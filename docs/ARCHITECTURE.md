@@ -32,7 +32,7 @@ src/lib/availability.ts   quanta math, markAt/slotMark, summarize, bestWindows, 
 src/lib/store.ts          client store: useGroup / updateGroup / updateMember, optimistic, per-member writes, SSE listener
 src/server/               SQLite (db, schema + migrations), validated own-rows-only writes, sessions and invites (groups.ts),
                           my account: devices, export, deletion, sign-in links (account.ts), in-memory pub/sub (events.ts),
-                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), the wishlist (places.ts), which devices want notifications (push.ts), opt-in demo data (seed.ts)
+                          request auth (http.ts), rate limits (limit.ts), optional email (mail.ts), plans and RSVPs (outings.ts), the wishlist (places.ts), which devices want notifications, and sending to them (push.ts), opt-in demo data (seed.ts)
 src/app/api/              groups (create), groups/[id] (+ me, me/overrides, me/sessions, me/push, invites, members, outings, places, events),
                           invites/[token] (info, join), sign-in (+ link)
 src/app/join/[token]      join screen
@@ -106,9 +106,9 @@ A write to overrides rewrites only the ranges around the change, merging equal n
 | `GET /api/sign-in` | Whether email sign-in is on |
 | `POST /api/sign-in` | Email a sign-in link to a recovery address |
 | `POST /api/sign-in/link` | Sign in with a personal or emailed link (token in the body, not the URL); creates a session |
-| `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; it may point at a wishlist place of the group (`placeId`, whose name stands in for an empty place); the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id` |
+| `POST /api/groups/:id/outings` | Propose a time with a title and place: it must lie inside a best-times window, at most 4 hours, up to 50 plans per group; it may point at a wishlist place of the group (`placeId`, whose name stands in for an empty place); the proposer is marked yes and busy for that time; the plans come with `GET /api/groups/:id`. Notifies the other members' devices |
 | `PUT /api/groups/:id/outings/:outingId/rsvp` | Answer yes, maybe or no; a yes may also mark the time busy for me, once |
-| `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there |
+| `DELETE /api/groups/:id/outings/:outingId` | Delete a plan (whoever proposed it, or the owner). Clears every override mark its proposer has in that time, including ones set by hand or for an overlapping plan, so they fall back to their typical week there. Notifies the members who said yes |
 | `POST /api/groups/:id/places` | Add a café or restaurant to the wishlist (name, optional website and map link, notes; http(s) links only; up to 100 on the list, 500 counting removed ones); the places come with `GET /api/groups/:id` |
 | `PATCH /api/groups/:id/places/:placeId` | Edit the details (whoever suggested it, or the owner), or mark it as visited (anyone in the group) |
 | `PUT`, `DELETE /api/groups/:id/places/:placeId/vote` | Add or take back my own "I want to go" vote |
@@ -126,15 +126,15 @@ A write that succeeds is published to the group's open streams (`events.ts`, in 
 
 ### Notifications
 
-Settled in the 1.1 design (the sending half is not built yet):
+Settled in the 1.1 design and built:
 
 - **Web push only**; email is not a channel. It needs HTTPS, a service worker (`public/sw.js`: it shows the message and opens the app when tapped, and caches nothing) and, on an iPhone, the app added to the Home Screen (hence the small web manifest).
 - **Two triggers**: someone proposed a plan; a plan you said yes to was deleted. Both come from actions that already exist. "A new window where everyone is free" and a weekly reminder are not built.
-- **Who gets them**: everyone in the group except the person who acted, on devices where the switch in Settings is on. Off by default, one switch per device, no per-type muting until there are more types.
+- **Who gets them**: everyone in the group except the person who acted (for a deleted plan, only the members who said yes), on devices where the switch in Settings is on. Off by default, one switch per device, no per-type muting until there are more types.
 - **What is sent**: the person's name and the group's name, never a plan's title, place or time, because the text passes through the browser maker's push server.
 - **A device is a session.** A subscription belongs to the session that made it, so signing out (or "Sign out other devices", or the 180-day expiry) removes it.
 - **Keys**: the VAPID pair is made on first use and kept in `push_key`, so nothing needs configuring and a backup carries it. Losing it only means every device has to turn the switch on again.
-- **Sending** (next PR): the `web-push` package, in the background after the response, no retries; a 404 or 410 from the push server deletes that subscription.
+- **Sending** (`push.ts`: `notifyProposed`, `notifyDeleted`): the `web-push` package, started by `createOuting` and `deleteOuting` once the change is made (and not at all when they throw) and not awaited; the lookups run first in the same step, inside the same catch, so nothing in it can fail the request, one request per device with a 24-hour time to live, no retries; a 404 or 410 from the push service deletes that subscription, any other failure is logged by status code only (the address works as a secret). `deleteOuting` collects who had said yes before their answers go with the plan. The push contact is `CAFECITO_URL` when it is HTTPS. A member can cause at most 10 notifications an hour (a proposal or a deletion each count once, however many devices it reaches; counted in memory, so a restart resets it), and an event with nobody to tell does not count; past that the plan still works but nothing is pushed, and one line is logged.
 
 ### Auth
 
@@ -152,7 +152,7 @@ The invite link is the credential: opening it asks for a name and sets a session
 - **Privacy.** Every member sees every other member's free/maybe pattern. "Busy" never carries a reason. State this in the UI when joining.
 - **Whole-group writes** are gone: `updateGroup` sends only the slot size, `updateMember` sends only changed fields and override quanta.
 - **Sessions** are random 256-bit tokens in an httpOnly cookie; only the hash is stored. Their last use is recorded at most daily, which also renews the cookie.
-- **Rate limits are in memory** and keyed on the last `X-Forwarded-For` entry, which is trustworthy behind exactly one reverse proxy (the documented setup).
+- **Rate limits are in memory** (this includes the 10 notifications an hour per member) and keyed on the last `X-Forwarded-For` entry, which is trustworthy behind exactly one reverse proxy (the documented setup).
 - **Recovery emails are not verified** when set; a link goes to whoever reads that mailbox. Setting someone else's address only lets them into your own account.
 - **Create group is open** to anyone who can reach the server (rate-limited). The deployment guide shows how to close it in the proxy; an "allow new groups" switch is not built.
 - **Demo mode** (`CAFECITO_DEMO=1`) seeds sessions with public tokens. Development only.
