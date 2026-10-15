@@ -62,7 +62,7 @@ One Docker container, one process, one SQLite file.
 
 ### Data model
 
-As built (1.1 so far). One person belongs to one group; a person in several groups waits for the multiple-groups part of 1.1, which is when a `user` table (holding the recovery email) would earn its place.
+As built (1.1 so far). One person belongs to one group; a person in several groups waits for multiple groups (planned for 1.4), which is when a `user` table (holding the recovery email) would earn its place.
 
 ```
 group(id, name, slot_minutes)

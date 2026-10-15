@@ -1,6 +1,6 @@
 # Cafecito: roadmap
 
-Status as of 2026-10-14. Release dates appear only once a release has shipped (see the table in the [README](../README.md)); each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
+Status as of 2026-10-15. Release dates appear only once a release has shipped (see the table in the [README](../README.md)); each release ships when its exit criteria are met. See [architecture](ARCHITECTURE.md) for the design behind it.
 
 ## Released
 
@@ -61,8 +61,8 @@ Exit: lose every device, open the saved link on a new one, and be back in the gr
 
 ## Next minor release
 
-### 1.1 Events, notifications, wishlist and multiple groups
-Brings together four features from the earlier plan. Events and the wishlist are built and on `main`; notifications are built for two cases (more are not planned yet) and multiple groups is not started. Ship order inside the release is open; notifications depend on events, which are done. Upgrading from 1.0.x runs migrations 5 to 11 on first start (all additive, one table is rebuilt with its rows copied); take the backup first, see [DEPLOY](DEPLOY.md#upgrade-notes).
+### 1.1 Events, notifications and wishlist
+Brings together three features from the earlier plan; all three are built and on `main` (notifications for two cases, more are not planned yet). Multiple groups per person was part of this release and moved to [1.4](#14-multiple-groups-per-person) on 2026-10-15, so the rest can ship sooner. Upgrading from 1.0.x runs migrations 5 to 11 on first start (all additive, one table is rebuilt with its rows copied); take the backup first, see [DEPLOY](DEPLOY.md#upgrade-notes).
 
 #### Turn a slot into an event: built
 - ✅ **Propose** a best time from the group screen with a title and place. It must lie inside a window where the group is free, last at most 4 hours, and a group holds up to 50 plans. The proposer counts as yes and their time turns busy.
@@ -86,13 +86,7 @@ Design settled (see [architecture](ARCHITECTURE.md#notifications)): web push onl
 - ✅ Export and account deletion cover the wishlist; "Delete my account" and the owner's "Remove member" say what stays behind.
 - Not built: a screen to see or restore removed places, attaching or changing a place on an existing plan, sorting by rating.
 
-#### Multiple groups per person: not started
-One account in several groups (climbing friends, old coworkers) with a group switcher, and a personal typical week that can be shared across groups or set per group.
-- **Create a new group while signed in.** Today "Create group" only appears to a browser with no session, so starting a second group means a private window and a separate identity. Add it to the group switcher: the creator becomes owner of the new group with the same account, and can carry over their typical week.
-- Joining by invite link while signed in adds the group to the same account instead of starting a new one.
-- Needs a model change: a session belongs to one member in one group today, so an account (`user`) table comes first.
-
-Exit for 1.1: all four parts built; the screens tried in a real browser and on a phone (**done for plans and the wishlist on 2026-10-14**, by the author, following a checklist; nothing wrong was reported); a second device and a real upgrade from a 1.0.x data file tried by someone other than the author.
+Exit for 1.1: all three parts built (done); the screens tried in a real browser and on a phone (**done for plans and the wishlist on 2026-10-14**, by the author, following a checklist; nothing wrong was reported; **notifications not yet tried against a real push service or an iPhone**); a second device and a real upgrade from a 1.0.x data file tried by someone other than the author (**not done yet**).
 
 ## Possible future releases
 
@@ -103,6 +97,14 @@ Import a Google/Apple/Outlook calendar through its private ICS URL and mark busy
 
 ### 1.3 Smarter suggestions
 Rank windows by preference as well as headcount: preferred days or times per member, minimum and maximum duration, travel buffer, and "not two outings in the same week". Still explainable: each suggestion says why it ranked where it did.
+
+### 1.4 Multiple groups per person
+One account in several groups (climbing friends, old coworkers) with a group switcher, and a personal typical week that can be shared across groups or set per group.
+- **Create a new group while signed in.** Today "Create group" only appears to a browser with no session, so starting a second group means a private window and a separate identity. Add it to the group switcher: the creator becomes owner of the new group with the same account, and can carry over their typical week.
+- Joining by invite link while signed in adds the group to the same account instead of starting a new one.
+- Needs a model change: a session belongs to one member in one group today, so an account (`user`) table comes first.
+
+Moved here from 1.1 (it is the largest change, and the rest of 1.1 does not depend on it). Not started.
 
 ### 2.0 Federation or hosted option (only if there is demand)
 A hosted instance for people who cannot self-host, with accounts that need email. Changes the privacy and operations story substantially; decide deliberately, not by drift.
