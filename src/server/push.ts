@@ -1,7 +1,7 @@
 import webpush from "web-push";
 import type { Db } from "./db";
 import { HttpError, isObject } from "./groups";
-import { MINUTE, limit } from "./limit";
+import { MINUTE, withinLimit } from "./limit";
 
 // Web push: which devices want notifications, and sending to them.
 
@@ -111,22 +111,16 @@ async function notify(db: Db, audience: () => { targets: Target[]; message: Mess
   }
 }
 
-/** Counts one use of `key` and says whether it is still within `max` an hour. */
-const underLimit = (key: string, max: number) => {
-  try {
-    limit(key, max, 60 * MINUTE);
-    return true;
-  } catch {
-    return false;
-  }
-};
+const NOTIFICATIONS_PER_HOUR = 10;
 
 // shortcut: at most 10 notifications (a proposal or a deletion, each reaching all the other devices) per member per hour, counted in
 // memory so a restart forgets them, so a loop of propose and delete cannot buzz everyone's phone. The plan itself still works.
 // Raise it if real use hits it.
 const mayPush = (actorId: string) => {
-  if (underLimit(`push:${actorId}`, 10)) return true;
-  if (underLimit(`push-logged:${actorId}`, 1)) console.warn("push skipped: this member already sent 10 notifications in the last hour"); // once an hour, so a loop cannot flood the log
+  if (withinLimit(`push:${actorId}`, NOTIFICATIONS_PER_HOUR, 60 * MINUTE)) return true;
+  // Logged once an hour, so a loop cannot flood the log.
+  if (withinLimit(`push-logged:${actorId}`, 1, 60 * MINUTE))
+    console.warn(`push skipped: this member already sent ${NOTIFICATIONS_PER_HOUR} notifications in the last hour`);
   return false;
 };
 
@@ -137,7 +131,7 @@ const names = (db: Db, memberId: string) =>
  * Who to tell and what to say: the actor's name and the group's, never the plan (the text passes through the browser maker's server).
  * Null when there is nobody, which costs nothing from the hourly limit, or when the actor has used it up.
  */
-function audience(db: Db, actorId: string, targets: Target[], say: (name: string) => string) {
+function toTell(db: Db, actorId: string, targets: Target[], say: (name: string) => string) {
   if (!targets.length || !mayPush(actorId)) return null;
   const { name, group } = names(db, actorId);
   return { targets, message: { title: say(name), body: group } };
@@ -146,7 +140,7 @@ function audience(db: Db, actorId: string, targets: Target[], say: (name: string
 /** Tells everyone else in the group that this member proposed a plan. */
 export const notifyProposed = (db: Db, groupId: string, actorId: string) =>
   notify(db, () =>
-    audience(
+    toTell(
       db,
       actorId,
       db
@@ -163,7 +157,7 @@ export const notifyDeleted = (db: Db, groupId: string, actorId: string, yesMembe
   notify(db, () => {
     const ids = yesMemberIds.filter((id) => id !== actorId);
     if (!ids.length) return null; // `IN ()` is not valid SQL, and there is nobody to tell
-    return audience(
+    return toTell(
       db,
       actorId,
       db

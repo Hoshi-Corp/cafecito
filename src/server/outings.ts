@@ -3,6 +3,7 @@ import type { Db } from "./db";
 import { HttpError, assertOwner, bad, cleanText, isObject, loadGroup, patchOverrides } from "./groups";
 import { MAX_OUTING_QUANTA, QUANTA_PER_DAY, bestWindows, isSetUp, toQuantum } from "../lib/availability";
 import type { Outing, Rsvp } from "../lib/types";
+import { notifyDeleted, notifyProposed } from "./push";
 
 export const MAX_OUTINGS = 50;
 
@@ -58,6 +59,7 @@ export function createOuting(db: Db, groupId: string, memberId: string, body: un
     db.prepare(`INSERT INTO rsvp (outing_id, member_id, answer) VALUES (?, ?, 'y')`).run(id, memberId);
     markBusyFor(db, memberId, startQ, endQ);
   })();
+  void notifyProposed(db, groupId, memberId); // not awaited, so a slow push service cannot delay the answer; it never throws
   return { id };
 }
 
@@ -79,7 +81,7 @@ export function answerOuting(db: Db, groupId: string, memberId: string, outingId
   })();
 }
 
-/** The person who proposed it, or the owner. Returns the ids of the members who had said yes, so they can be told. */
+/** The person who proposed it, or the owner. Those who had said yes are told (in the background; nothing is sent when this throws). */
 export function deleteOuting(db: Db, groupId: string, memberId: string, outingId: string) {
   const o = db.prepare(`SELECT created_by createdBy, start_q startQ, end_q endQ FROM outing WHERE id = ? AND group_id = ?`).get(outingId, groupId) as
     | { createdBy: string | null; startQ: number; endQ: number }
@@ -93,5 +95,5 @@ export function deleteOuting(db: Db, groupId: string, memberId: string, outingId
     // shortcut: clears every mark in that range, also one from another plan or by hand; track marks per plan if that bites.
     if (o.createdBy) patchOverrides(db, o.createdBy, { remove: Array.from({ length: o.endQ - o.startQ }, (_, i) => o.startQ + i) });
   })();
-  return yesIds;
+  void notifyDeleted(db, groupId, memberId, yesIds);
 }
