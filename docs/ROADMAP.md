@@ -12,6 +12,7 @@ Status as of 2026-10-15. Release dates appear only once a release has shipped (s
 | 0.4 Groups and invites | 2026-10-11 (in 1.0.0) |
 | 0.5 Live updates | 2026-10-11 (in 1.0.0) |
 | 1.0 Self-hosted release | 2026-10-11 |
+| 1.0.1 Personal links | 2026-10-13 |
 
 **0.1 Demo calendar.** Mobile-first Next.js app on browser-local demo data. Typical week, date overrides, group heatmap, who-is-free list, best times, per-person time zones, 15/30/60-minute slots.
 
@@ -19,9 +20,9 @@ Status as of 2026-10-15. Release dates appear only once a release has shipped (s
 
 **0.3 Shared storage.** SQLite through `better-sqlite3`, migrations in the repo, a per-member write API that rejects writes to other members' rows, a server-backed `store.ts`, the `/data` volume and backup instructions. Verified: `docker build` and `docker run` on a fresh volume, one backup and restore. The two-browser check was done in 0.4 (see below).
 
-## Built, awaiting release
+## Shipped: details
 
-0.4, 0.5 and 1.0 shipped together as 1.0.0, so their sections below are history. 1.0.1 ships with the next manual release (a `patch` bump).
+0.4, 0.5 and 1.0 shipped together as 1.0.0, and 1.0.1 followed on 2026-10-13, so their sections below are history.
 
 ### 0.4 Groups and invites
 - ✅ Create a group; the owner generates, lists and revokes invite links (expiring, optional use limit). Tokens are stored hashed and shown once.
@@ -62,7 +63,7 @@ Exit: lose every device, open the saved link on a new one, and be back in the gr
 ## Next minor release
 
 ### 1.1 Events, notifications and wishlist
-Brings together three features from the earlier plan; all three are built and on `main` (notifications for two cases, more are not planned yet). Multiple groups per person was part of this release and moved to [1.4](#14-multiple-groups-per-person) on 2026-10-15, so the rest can ship sooner. Upgrading from 1.0.x runs migrations 5 to 11 on first start (all additive, one table is rebuilt with its rows copied); take the backup first, see [DEPLOY](DEPLOY.md#upgrade-notes).
+Brings together three features from the earlier plan; all three are built and on `main` (notifications for two cases, more are not planned yet). Multiple groups per person was part of this release and moved to [1.4](#14-multiple-groups-per-person) on 2026-10-15, so the rest can ship sooner. It will ship as 1.1.0, a `minor` bump from 1.0.1. Upgrading from 1.0.x runs migrations 5 to 11 on first start (all additive, one table is rebuilt with its rows copied); take the backup first, see [DEPLOY](DEPLOY.md#upgrade-notes).
 
 #### Turn a slot into an event: built
 - ✅ **Propose** a best time from the group screen with a title and place. It must lie inside a window where the group is free, last at most 4 hours, and a group holds up to 50 plans. The proposer counts as yes and their time turns busy.
