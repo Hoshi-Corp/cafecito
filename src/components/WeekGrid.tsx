@@ -112,7 +112,7 @@ export function WeekGrid({
     }
   };
 
-  const template = { gridTemplateColumns: `2.75rem repeat(${columns.length}, minmax(0, 1fr))` };
+  const template = { gridTemplateColumns: `3.25rem repeat(${columns.length}, minmax(0, 1fr))` };
 
   return (
     <div className="select-none" role="group" aria-label={label} aria-describedby={hintId}>
@@ -121,19 +121,27 @@ export function WeekGrid({
           ? "Arrow keys move between slots. Enter or Space paints a slot; hold Shift with an arrow key to paint as you move."
           : "Arrow keys move between slots. Enter or Space shows who is free."}
       </p>
-      <div className="sticky top-0 z-10 grid bg-background pb-1" style={template}>
+      <div className="sticky top-0 z-10 grid gap-x-[3px] bg-card pt-1 pb-2 sm:gap-x-[5px]" style={template}>
         <div />
         {columns.map((c) => (
-          <div key={c.key} className="text-center leading-tight">
-            <div className={`text-xs ${c.highlight ? "font-semibold text-accent" : "text-muted"}`}>{c.label}</div>
+          <div
+            key={c.key}
+            aria-current={c.highlight ? "date" : undefined}
+            className={`rounded-xl py-1.5 text-center leading-tight ${
+              c.highlight ? "bg-sun text-[#1c2840] shadow-[0_4px_0_var(--sun-edge)]" : ""
+            }`}
+          >
+            <div className={`text-sm ${c.highlight ? "font-semibold" : "text-muted"}`}>{c.label}</div>
             {c.sub && (
-              <div className={`text-sm font-medium ${c.highlight ? "text-accent" : ""}`}>{c.sub}</div>
+              <div data-day className="round text-lg font-bold">
+                {c.sub}
+              </div>
             )}
           </div>
         ))}
       </div>
       <div
-        className="grid pt-2"
+        className="grid gap-x-[3px] gap-y-[2px] pt-3.5 sm:gap-x-[5px]"
         style={template}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -145,7 +153,7 @@ export function WeekGrid({
           <div key={r.key} className="contents">
             <div className="relative" style={{ height: rowHeight }}>
               {r.label && (
-                <span className="absolute -top-2 right-1.5 text-[11px] text-muted tabular-nums">{r.label}</span>
+                <span className="absolute -top-2.5 right-1.5 text-sm leading-none whitespace-nowrap text-muted tabular-nums">{r.label}</span>
               )}
             </div>
             {columns.map((c, col) => {
@@ -163,11 +171,11 @@ export function WeekGrid({
                   onFocus={() => setFocus({ col, row })}
                   aria-label={cellLabel?.(col, row)}
                   title={cellLabel?.(col, row)}
-                  className={`border-l border-line bg-cell ${r.label ? "border-t" : "border-t border-t-line/40"} ${
-                    onPaint ? `cursor-crosshair ${scrollTouches ? "" : "touch-none"}` : "cursor-pointer"
-                  } ${isSelected ? "relative z-[1] outline-2 outline-foreground" : ""} ${
-                    col === columns.length - 1 ? "border-r" : ""
-                  } ${row === rows.length - 1 ? "border-b" : ""}`}
+                  className={`rounded-[4px] bg-cell ${
+                    onPaint
+                      ? `cursor-crosshair ${scrollTouches ? "" : "touch-none"}`
+                      : "cursor-pointer transition-transform duration-150 hover:scale-110"
+                  } ${isSelected ? "pop relative z-[1] outline-2 outline-offset-1 outline-foreground" : ""}`}
                   style={{
                     height: rowHeight,
                     ...(painting && paintPreview ? { background: paintPreview, opacity: 0.75 } : cellStyle(col, row)),

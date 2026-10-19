@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Find when your friends are free.",
     start_url: "/",
     display: "standalone",
-    background_color: "#fbf7f1",
-    theme_color: "#b4532a",
+    background_color: "#fff7ec",
+    theme_color: "#c9e7f2",
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },

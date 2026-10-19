@@ -64,7 +64,7 @@ async function open(group: Group = crew) {
     label: (col: number, row: number) => cell(col, row).getAttribute("aria-label")!,
     rowCount: () => container.querySelectorAll('[data-col="0"]').length,
     /** Day-of-month under each weekday header. */
-    days: () => [...container.querySelectorAll(".sticky .text-sm")].map((el) => el.textContent),
+    days: () => [...container.querySelectorAll(".sticky [data-day]")].map((el) => el.textContent),
     /** Enter on a cell: selects it on the group tab, paints it on the others. */
     enter: (col: number, row: number) => {
       act(() => cell(col, row).focus());
@@ -114,8 +114,8 @@ describe("group tab", () => {
   it("counts who is free in each slot and shows this week with today highlighted", async () => {
     const { label, days, rowCount } = await open();
     expect(days()).toEqual(["12", "13", "14", "15", "16", "17", "18"]);
-    expect(screen.getByText("13").className).toContain("text-accent");
-    expect(screen.getByText("14").className).not.toContain("text-accent");
+    expect(screen.getByText("13").closest("[aria-current=date]")).toBeTruthy();
+    expect(screen.getByText("14").closest("[aria-current=date]")).toBeNull();
     expect(rowCount()).toBe(17);
     expect(label(0, ROW_18)).toMatch(/: 3 of 4 free, 1 maybe$/);
     expect(label(0, ROW_7)).toMatch(/: 0 of 4 free$/);
@@ -159,7 +159,7 @@ describe("group tab", () => {
     click("Previous week");
     expect(days()[0]).toBe("5");
     // No day of the previous week is today.
-    expect(document.querySelector(".sticky .text-accent")).toBeNull();
+    expect(document.querySelector(".sticky [aria-current=date]")).toBeNull();
   });
 
   it("rolls over to the new week when a tab left open becomes visible again", async () => {
@@ -167,7 +167,7 @@ describe("group tab", () => {
     vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
     fireEvent(document, new Event("visibilitychange"));
     expect(days()[0]).toBe("19");
-    expect(screen.getByText("20").className).toContain("text-accent");
+    expect(screen.getByText("20").closest("[aria-current=date]")).toBeTruthy();
   });
 
   it.each([
@@ -445,7 +445,7 @@ describe("wishlist", () => {
 
   it("lists places to try first, the most wanted before the rest, with links, notes and who suggested them", async () => {
     await open({ ...crew, places: [visited, place, wanted] });
-    const names = screen.getAllByRole("listitem").map((li) => li.querySelector(".font-medium")?.textContent).filter((n) => ["Café X", "Old Haunt", "Wanted"].includes(n ?? ""));
+    const names = screen.getAllByRole("listitem").map((li) => li.querySelector("h3")?.textContent).filter((n) => ["Café X", "Old Haunt", "Wanted"].includes(n ?? ""));
     expect(names).toEqual(["Wanted", "Café X", "Old Haunt"]);
     const link = screen.getByRole("link", { name: "Café X" });
     expect(link.getAttribute("href")).toBe("https://x.example");

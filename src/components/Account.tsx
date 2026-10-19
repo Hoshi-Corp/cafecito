@@ -59,29 +59,29 @@ export function Account({ group }: { group: Group }) {
   };
 
   return (
-    <div className="mt-4 flex flex-col gap-3 border-t border-line pt-3">
-      <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">Your account</h3>
+    <div className="mt-6 flex flex-col gap-3 border-t-2 border-line pt-5">
+      <h3 className="round text-lg font-bold">Your account</h3>
       <div className="flex flex-col gap-1">
-        <h4 className="text-xs text-muted">Personal link: opens your account on any device</h4>
+        <h4 className="text-sm text-muted">Personal link: opens your account on any device</h4>
         {accessToken && <AccessLink token={accessToken} />}
-        <button className="self-start text-xs underline" onClick={newLink}>
+        <button className="link self-start text-sm" onClick={newLink}>
           Get a new personal link
         </button>
       </div>
       {group.recovery && (
         <form onSubmit={saveEmail} className="flex flex-wrap items-end gap-2">
-          <label className="flex grow flex-col gap-1 text-xs text-muted">
+          <label className="flex grow flex-col gap-1 text-sm text-muted">
             Recovery email (optional, only you see it): get a sign-in link if you lose this device
             <input name="email" type="email" autoComplete="email" defaultValue={group.email ?? ""} className={field} />
           </label>
-          <button className="rounded-md border border-foreground px-2.5 py-1 font-medium">Save</button>
+          <button className="btn btn-plain px-3 py-1.5">Save</button>
         </form>
       )}
-      {note && <p role="status" className="text-xs text-muted">{note}</p>}
+      {note && <p role="status" className="text-sm text-muted">{note}</p>}
       <Notifications />
       <div className="flex flex-col gap-1">
-        <h4 className="text-xs text-muted">Signed-in devices</h4>
-        <ul className="flex flex-col gap-0.5 text-xs">
+        <h4 className="text-sm text-muted">Signed-in devices</h4>
+        <ul className="flex flex-col gap-0.5 text-sm">
           {sessions.map((s, i) => (
             <li key={i}>
               {s.device || "Unknown device"}
@@ -92,16 +92,16 @@ export function Account({ group }: { group: Group }) {
           ))}
         </ul>
         {sessions.length > 1 && (
-          <button className="self-start text-xs underline" onClick={signOutOthers}>
+          <button className="link self-start text-sm" onClick={signOutOthers}>
             Sign out other devices
           </button>
         )}
       </div>
-      <div className="flex flex-wrap gap-3 text-xs">
-        <a className="underline" href={ME} download>
+      <div className="flex flex-wrap gap-3 text-sm">
+        <a className="link" href={ME} download>
           Export my data
         </a>
-        <button className="text-danger underline" onClick={deleteMe}>
+        <button className="link text-danger" onClick={deleteMe}>
           Delete my account
         </button>
       </div>

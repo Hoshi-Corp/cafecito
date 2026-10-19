@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Cafecito">
+  <title>Cafecito</title>
+  <rect width="100" height="100" rx="22" fill="#fff7ec"/>
+  <g transform="translate(9 9) scale(.82)">
+  <g fill="none" stroke-width="7" stroke-linecap="round">
+    <path stroke="#ef3b36" d="M74.7,25.3A35,35 0 1 0 74.7,74.7"/>
+    <path stroke="#ff8a1f" d="M69,31A27,27 0 1 0 69,69"/>
+    <path stroke="#ffc53d" d="M63.4,36.6A19,19 0 1 0 63.4,63.4"/>
+    <path stroke="#17a08f" d="M57.8,42.2A11,11 0 1 0 57.8,57.8"/>
+  </g>
+  <circle cx="80" cy="50" r="7" fill="#1c2840"/>
+  </g>
+</svg>
