@@ -7,9 +7,17 @@ export interface Person {
   id: string;
   name: string;
   color: string;
-  /** Free at the group's next time; shown on the back of their photo. */
-  free: boolean;
+  /** Where they stand at the group's next time; shown on the back of their photo. "unset": nothing marked yet. */
+  at: "free" | "maybe" | "busy" | "unset";
 }
+
+// The back of a photo: a word and a mark.
+const BACK: Record<Person["at"], [word: string, mark: string, color: string]> = {
+  free: ["Free", "✓", "#17a08f"],
+  maybe: ["Maybe", "~", "#b45309"],
+  busy: ["Busy", "–", "#a3172c"],
+  unset: ["Not set", "?", "#5a6275"],
+};
 
 // The season from the calendar, flipped south of the equator.
 const SOUTH =
@@ -232,8 +240,8 @@ export function Scenery({ people, everyone }: { people: Person[]; /** Everyone i
                       </span>
                     </span>
                     <span className="scn-side scn-back" style={{ fontSize: Math.max(11, photo * 0.24) }}>
-                      {person.free ? "Free" : "Busy"}
-                      <b style={{ color: person.free ? "#17a08f" : "#a3172c" }}>{person.free ? "✓" : "–"}</b>
+                      {BACK[person.at][0]}
+                      <b style={{ color: BACK[person.at][2] }}>{BACK[person.at][1]}</b>
                     </span>
                   </span>
                 </span>

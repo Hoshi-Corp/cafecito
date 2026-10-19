@@ -405,7 +405,7 @@ function GroupView({ group }: { group: Group }) {
   );
 }
 
-/** The top of the page: the next time everyone can meet, who that is, and the rainbow. */
+/** The top of the page: the next time everyone can meet and who that is, over the park. */
 function Hero({
   group,
   zone,
@@ -429,7 +429,16 @@ function Hero({
   return (
     <header className="relative isolate overflow-hidden bg-sky pt-5 pb-64 lg:pb-32">
       <div className="absolute inset-0 -z-20 bg-[radial-gradient(120%_90%_at_0%_0%,rgb(255_255_255/.45),transparent_60%)]" />
-      <Scenery people={group.members.map((m) => ({ id: m.id, name: nameOf(m), color: m.color, free: !!next?.free.some((f) => f.id === m.id) }))} everyone={!!next && next.free.length === group.members.length} />
+      <Scenery
+        people={group.members.map((m) => ({
+          id: m.id,
+          name: nameOf(m),
+          color: m.color,
+          // Someone who has not marked anything yet is not busy, just not counted.
+          at: !isSetUp(m) ? "unset" : next?.free.some((f) => f.id === m.id) ? "free" : next?.maybe.some((f) => f.id === m.id) ? "maybe" : "busy",
+        }))}
+        everyone={!!next && total > 0 && next.free.length === total}
+      />
       {/* Only the content itself takes taps, so the photos on the bunting behind it can be flipped. */}
       <div className="pointer-events-none mx-auto max-w-[1200px] px-5 [&>*]:pointer-events-auto">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
