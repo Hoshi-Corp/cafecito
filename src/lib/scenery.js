@@ -1,7 +1,7 @@
 /* eslint-disable */
 // Scenery painted on canvases: a seasonal landscape (mountains, a tree line, hills and a meadow) and trees of real
 // species. Aspens come from our own renderer; larches and maples from the one GPT 6.1 Sol drew (each did its species
-// best). Prototyped in design/explorations/tree-lab.
+// best).
 
 // How sharp to paint. Apple devices (our users are on recent Macs and iPhone 14 or newer; iPads say "Macintosh")
 // and machines with 8 or more cores paint at the screen's full sharpness, up to 3x; everything else at up to 2x,

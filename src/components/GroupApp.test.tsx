@@ -6,6 +6,9 @@ import { retryLoad } from "@/lib/store";
 import type { Group, Mark, Member } from "@/lib/types";
 import { GroupApp } from "./GroupApp";
 
+// jsdom has no canvas; the park's painting has its own tests.
+vi.mock("@/lib/scenery", () => ({ drawLandscape: () => {}, drawTree: () => {} }));
+
 type Range = [weekday: number | "daily", from: number, to: number, mark?: Mark];
 
 /** Typical week from hour ranges; weekday: Monday = 0. */
@@ -188,6 +191,39 @@ describe("group tab", () => {
     const { label } = await open({ ...crew, members: [member("a", "Ana"), member("b", "Ben")] });
     expect(screen.queryByText("Tap a slot to see who")).toBeNull();
     expect(label(0, ROW_18)).toMatch(/: 0 of 0 free$/);
+  });
+});
+
+describe("the park", () => {
+  /** Gives the header a size and a colour scheme, so the park behind it draws. */
+  function sky(dark: boolean) {
+    let resize = () => {};
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(cb: (e: { contentRect: { width: number; height: number } }[]) => void) {
+        resize = () => act(() => cb([{ contentRect: { width: 1440, height: 640 } }]));
+      }
+      observe() {}
+      disconnect() {}
+    });
+    vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: dark && q.includes("dark"), addEventListener() {}, removeEventListener() {} }));
+    return () => resize();
+  }
+  const backs = () => [...document.querySelectorAll(".scn-pol")].map((p) => [p.querySelector(".scn-photo")!.textContent, p.querySelector(".scn-back")!.textContent]);
+
+  it("shows on each photo where that person stands at the next time; nobody unmarked is called busy", async () => {
+    const draw = sky(false);
+    // Eli is only a maybe, so the best time is an evening: three free, Eli maybe, the unnamed member not counted.
+    await open({ ...crew, members: crew.members.map((m) => (m.id === "e" ? { ...m, pattern: pattern(["daily", 18, 20, "m"]) } : m)) });
+    draw();
+    expect(backs()).toEqual([["A", "Free✓"], ["B", "Free✓"], ["C", "Free✓"], ["U", "Not set?"], ["E", "Maybe~"]]);
+  });
+
+  it("the owls start happy when everyone counted is free, even with someone still unmarked", async () => {
+    const draw = sky(true);
+    await open({ ...crew, members: crew.members.map((m) => (m.id === "e" ? { ...m, pattern: ANA } : m)) });
+    draw();
+    expect([...document.querySelectorAll(".scn-owl svg")].map((o) => o.getAttribute("data-mood"))).toEqual(["happy", "happy"]);
   });
 });
 

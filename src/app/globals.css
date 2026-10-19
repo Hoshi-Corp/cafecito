@@ -167,24 +167,11 @@ body {
   }
 }
 
-/* The one orchestrated moment on load: the rainbow draws in, the sun rises, the day lifts off the page. */
+/* The one orchestrated moment on load: the day lifts off the page. */
 @property --lift {
   syntax: "<number>";
   inherits: true;
   initial-value: 1;
-}
-.rainbow path {
-  stroke-dasharray: 1 1;
-  animation: rainbow-draw 1100ms cubic-bezier(0.3, 0.7, 0.2, 1) both;
-}
-.rainbow g:nth-of-type(2) path { animation-delay: 110ms; }
-.rainbow g:nth-of-type(3) path { animation-delay: 220ms; }
-.rainbow g:nth-of-type(4) path { animation-delay: 330ms; }
-.rainbow g {
-  transition: transform 0.4s ease-out;
-}
-.rainbow .sun {
-  animation: sun-rise 900ms cubic-bezier(0.2, 1.3, 0.4, 1) 500ms both;
 }
 .lift {
   text-shadow: calc(var(--lift) * 0.05em) calc(var(--lift) * 0.05em) 0 var(--tang);
@@ -192,14 +179,6 @@ body {
 }
 [dir="rtl"] .lift {
   text-shadow: calc(var(--lift) * -0.05em) calc(var(--lift) * 0.05em) 0 var(--tang);
-}
-@keyframes rainbow-draw {
-  from { stroke-dashoffset: 1; }
-  to { stroke-dashoffset: 0; }
-}
-@keyframes sun-rise {
-  from { transform: translateY(90px); }
-  to { transform: none; }
 }
 @keyframes lift {
   from { --lift: 0; transform: translateY(6px); }
@@ -217,9 +196,6 @@ body {
   *, *::before, *::after {
     animation: none !important;
     transition: none !important;
-  }
-  .rainbow path {
-    stroke-dasharray: none;
   }
 }
 
