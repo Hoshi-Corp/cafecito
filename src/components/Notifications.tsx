@@ -49,7 +49,7 @@ export function Notifications() {
         .catch(() => {});
   }, []);
 
-  if (!supported()) return <p className="text-xs text-muted">{whyNot()}</p>;
+  if (!supported()) return <p className="text-sm text-muted">{whyNot()}</p>;
   if (!state) return null;
 
   const turnOn = async () => {
@@ -88,12 +88,12 @@ export function Notifications() {
 
   return (
     <div className="flex flex-col gap-1">
-      <h4 className="text-xs text-muted">Notifications on this device</h4>
-      <label className="flex items-center gap-2 text-xs">
+      <h4 className="text-sm text-muted">Notifications on this device</h4>
+      <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={state.subscribed} disabled={busy} onChange={toggle} />
         Tell me when a plan is proposed, or deleted after I said yes
       </label>
-      {note && <p role="status" className="text-xs text-muted">{note}</p>}
+      {note && <p role="status" className="text-sm text-muted">{note}</p>}
     </div>
   );
 }

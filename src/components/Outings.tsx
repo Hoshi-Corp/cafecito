@@ -5,6 +5,7 @@ import { useState } from "react";
 import { MAX_OUTING_QUANTA, QUANTUM_MS } from "@/lib/availability";
 import { answerOuting, proposeOuting, removeOuting } from "@/lib/store";
 import type { Group, Outing, Place, Rsvp } from "@/lib/types";
+import { Arcs } from "./Brand";
 
 const ANSWERS: { value: Rsvp; label: string }[] = [
   { value: "y", label: "Yes" },
@@ -36,10 +37,9 @@ export function ProposeForm({
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const slot = { startQ: w.startQ, endQ: Math.min(w.endQ, w.startQ + MAX_OUTING_QUANTA) };
-  const field = "rounded-md border border-line bg-cell px-2 py-1";
   return (
     <form
-      className="flex flex-col gap-2 rounded-xl border border-line bg-card p-3 text-sm"
+      className="card flex flex-col gap-3 p-5 text-[15px]"
       onSubmit={async (e) => {
         e.preventDefault();
         if (sending) return;
@@ -50,16 +50,16 @@ export function ProposeForm({
         else onDone();
       }}
     >
-      <h2 className="font-medium">Propose {when(slot, zone)}</h2>
+      <h2 className="round text-lg font-bold">Propose {when(slot, zone)}</h2>
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">What</span>
-        <input className={field} value={title} maxLength={80} required pattern=".*\S.*" autoFocus onChange={(e) => setTitle(e.target.value)} />
+        <span className="text-sm text-muted">What</span>
+        <input className="field" value={title} maxLength={80} required pattern=".*\S.*" autoFocus onChange={(e) => setTitle(e.target.value)} />
       </label>
       {places.length > 0 && (
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted">From the wishlist (optional)</span>
+          <span className="text-sm text-muted">From the wishlist (optional)</span>
           <select
-            className={field}
+            className="field"
             value={placeId}
             onChange={(e) => {
               setPlaceId(e.target.value);
@@ -78,19 +78,19 @@ export function ProposeForm({
         </label>
       )}
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Where (optional)</span>
-        <input className={field} value={place} maxLength={120} onChange={(e) => setPlace(e.target.value)} />
+        <span className="text-sm text-muted">Where (optional)</span>
+        <input className="field" value={place} maxLength={120} onChange={(e) => setPlace(e.target.value)} />
       </label>
       {error && (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
-      <div className="flex gap-2">
-        <button disabled={sending} className="rounded-md bg-foreground px-3 py-1 font-medium text-background disabled:opacity-50">
+      <div className="flex gap-3">
+        <button disabled={sending} className="btn btn-sun">
           Propose
         </button>
-        <button type="button" className="rounded-md border border-line px-3 py-1" onClick={onDone}>
+        <button type="button" className="btn btn-plain" onClick={onDone}>
           Cancel
         </button>
       </div>
@@ -102,9 +102,9 @@ export function Outings({ group, zone, now }: { group: Group; zone: string; now:
   const upcoming = (group.outings ?? []).filter((o) => o.endQ * QUANTUM_MS > now);
   if (!upcoming.length) return null;
   return (
-    <section className="rounded-xl border border-line bg-card p-3">
-      <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Plans</h2>
-      <ul className="flex flex-col gap-3">
+    <section>
+      <h2 className="section-title">Plans</h2>
+      <ul className="flex flex-col gap-4">
         {upcoming.map((o) => (
           <OutingRow key={o.id} outing={o} group={group} zone={zone} />
         ))}
@@ -125,15 +125,16 @@ function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; z
   const picked = group.places?.find((p) => p.id === o.placeId);
   const linked = picked?.link || picked?.mapLink || "";
   return (
-    <li className="flex flex-col gap-1.5 text-sm">
-      <div className="flex items-baseline justify-between gap-2">
+    <li className="relative isolate flex flex-col gap-2 overflow-hidden rounded-3xl bg-plan p-5 text-[15px] text-[#f4f6fb] shadow-[0_6px_0_var(--plan-edge),0_20px_30px_-18px_rgb(28_40_64/.7)]">
+      <Arcs className="absolute -top-8 -right-8 -z-10 w-36 opacity-95" />
+      <div className="flex items-baseline justify-between gap-2 pr-16">
         <span>
-          <span className="font-medium">{o.title}</span>
+          <span className="round text-xl font-bold">{o.title}</span>
           {o.place && (
-            <span className="text-muted">
+            <span className="text-[#c6cfe0]">
               {" · "}
               {linked ? (
-                <a href={linked} target="_blank" rel="noopener noreferrer" className="underline">
+                <a href={linked} target="_blank" rel="noopener noreferrer" className="link">
                   {o.place}
                 </a>
               ) : (
@@ -143,39 +144,43 @@ function OutingRow({ outing: o, group, zone }: { outing: Outing; group: Group; z
           )}
         </span>
         {canDelete && (
-          <button className="text-xs text-muted underline" onClick={() => confirm(`Delete “${o.title}”?`) && run(removeOuting(o.id))}>
+          <button className="link shrink-0 text-sm text-[#c6cfe0]" onClick={() => confirm(`Delete “${o.title}”?`) && run(removeOuting(o.id))}>
             Delete
           </button>
         )}
       </div>
-      <span className="tabular-nums text-muted">{when(o, zone)}</span>
-      <div className="flex flex-wrap items-center gap-1 text-xs" role="group" aria-label={`Your answer to ${o.title}`}>
+      <span className="tabular-nums text-[#c6cfe0]">{when(o, zone)}</span>
+      <div className="mt-2 grid grid-cols-3 gap-2.5" role="group" aria-label={`Your answer to ${o.title}`}>
         {ANSWERS.map((a) => (
           <button
             key={a.value}
             aria-pressed={mine === a.value}
             onClick={() => run(answerOuting(o.id, a.value, markBusy))}
-            className={`rounded-full border px-2.5 py-1 ${mine === a.value ? "border-foreground font-medium" : "border-line text-muted"}`}
+            className={`btn border-2 px-1.5 py-2.5 text-base ${
+              mine === a.value
+                ? "border-sun bg-sun text-[#1c2840] shadow-[0_4px_0_var(--sun-edge)]"
+                : "border-white/50 shadow-[0_4px_0_rgb(0_0_0/.35)]"
+            }`}
           >
             {a.label}
           </button>
         ))}
-        <label className="ml-1 flex items-center gap-1 text-muted">
-          <input type="checkbox" checked={markBusy} onChange={(e) => {
-            setMarkBusy(e.target.checked);
-            // Already said yes: ticking the box applies it now, instead of waiting for another click on Yes.
-            if (e.target.checked && mine === "y") run(answerOuting(o.id, "y", true));
-          }} />
-          Mark busy in my week when I say yes
-        </label>
       </div>
+      <label className="mt-1 flex items-center gap-2 text-sm text-[#c6cfe0]">
+        <input type="checkbox" checked={markBusy} onChange={(e) => {
+          setMarkBusy(e.target.checked);
+          // Already said yes: ticking the box applies it now, instead of waiting for another click on Yes.
+          if (e.target.checked && mine === "y") run(answerOuting(o.id, "y", true));
+        }} />
+        Mark busy in my week when I say yes
+      </label>
       {error && (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-sm text-[#ffb3b3]">
           {error}
         </p>
       )}
       {ANSWERS.map((a) => names(a.value) && (
-        <p key={a.value} className="text-xs text-muted">
+        <p key={a.value} className="text-sm text-[#c6cfe0]">
           {a.label}: {names(a.value)}
         </p>
       ))}

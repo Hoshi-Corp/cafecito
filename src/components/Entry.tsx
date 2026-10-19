@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { retryLoad } from "@/lib/store";
+import { Arcs, Mark, Wave } from "./Brand";
 
 type Profile = { name: string; color: string; timeZone: string };
 
@@ -15,7 +16,29 @@ const COLORS: [hex: string, name: string][] = [
   ["#b45309", "Amber"],
   ["#0e7490", "Cyan"],
 ];
-export const field = "rounded-md border border-line bg-cell px-2 py-1";
+export const field = "field";
+
+/** The sky with the logo, a corner of the rainbow, and a white card: the frame for every screen before the group. */
+export function EntryShell({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <main className="flex flex-1 flex-col">
+      <header className="relative isolate overflow-hidden bg-sky pt-10 pb-20">
+        <Arcs className="absolute -top-10 -right-10 -z-10 w-44 sm:w-56" />
+        <div className="mx-auto flex max-w-md flex-col gap-2 px-5">
+          <div className="flex items-center gap-2.5">
+            <Mark size={44} className="text-foreground" />
+            <span className="round text-[32px] leading-none font-extrabold tracking-tight">cafecito</span>
+          </div>
+          <p className="text-muted">Find when your friends are free.</p>
+        </div>
+        <Wave className="absolute inset-x-0 -bottom-px h-11 w-full" />
+      </header>
+      <div className="relative z-10 mx-auto -mt-6 w-full max-w-md px-5 pb-16">
+        <div className={`card flex flex-col gap-4 p-6 ${className ?? ""}`}>{children}</div>
+      </div>
+    </main>
+  );
+}
 
 /** POSTs JSON; returns the server's error message (or null on success) and the reply. */
 async function postJson(url: string, body: unknown) {
@@ -42,14 +65,14 @@ export function AccessLink({ token, onDone }: { token: string; onDone?: () => vo
         {navigator.clipboard && (
           <button
             type="button"
-            className="rounded-md border border-foreground px-3 py-1.5 font-medium"
+            className="btn btn-plain"
             onClick={() => navigator.clipboard.writeText(link).then(() => setCopied(true), () => {})}
           >
             {copied ? "Copied" : "Copy link"}
           </button>
         )}
         {onDone && (
-          <button type="button" className="rounded-md bg-foreground px-3 py-1.5 font-medium text-background" onClick={onDone}>
+          <button type="button" className="btn btn-sun" onClick={onDone}>
             Continue
           </button>
         )}
@@ -62,8 +85,8 @@ export function AccessLink({ token, onDone }: { token: string; onDone?: () => vo
 export function ColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
   return (
     <fieldset className="flex flex-col gap-1">
-      <legend className="mb-1 text-xs text-muted">Your color</legend>
-      <div className="flex flex-wrap gap-2">
+      <legend className="mb-1 text-sm text-muted">Your color</legend>
+      <div className="flex flex-wrap gap-2.5">
         {COLORS.map(([c, name]) => (
           <button
             type="button"
@@ -71,7 +94,9 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (col
             aria-label={name}
             aria-pressed={value === c}
             onClick={() => onChange(c)}
-            className={`size-7 rounded-full border-2 ${value === c ? "border-foreground" : "border-transparent"}`}
+            className={`size-9 rounded-full transition-transform active:scale-90 ${
+              value === c ? "ring-3 ring-foreground ring-offset-2 ring-offset-card" : ""
+            }`}
             style={{ background: c }}
           />
         ))}
@@ -126,8 +151,8 @@ function ProfileForm({
 
   if (accessToken)
     return (
-      <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 pt-10 pb-16">
-        <h1 className="text-2xl font-semibold tracking-tight">You are in</h1>
+      <EntryShell>
+        <h1 className="round text-3xl font-extrabold tracking-tight">You are in</h1>
         <AccessLink
           token={accessToken}
           onDone={() => {
@@ -135,20 +160,20 @@ function ProfileForm({
             onDone();
           }}
         />
-      </main>
+      </EntryShell>
     );
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 pt-10 pb-16">
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <form onSubmit={submitForm} className="flex flex-col gap-3 text-sm">
+    <EntryShell>
+      <h1 className="round text-3xl font-extrabold tracking-tight">{title}</h1>
+      <form onSubmit={submitForm} className="flex flex-col gap-4 text-[15px]">
         {children}
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted">Your name</span>
+          <span className="text-sm text-muted">Your name</span>
           <input name="name" required maxLength={60} className={field} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted">Your time zone</span>
+          <span className="text-sm text-muted">Your time zone</span>
           <select name="timeZone" defaultValue={defaultZone} className={field}>
             {!zones.includes(defaultZone) && <option>{defaultZone}</option>}
             {zones.map((z) => (
@@ -162,12 +187,12 @@ function ProfileForm({
             {error}
           </p>
         )}
-        <button disabled={busy} className="rounded-md bg-foreground px-3 py-2 font-medium text-background disabled:opacity-50">
+        <button disabled={busy} className="btn btn-sun py-3 text-[17px]">
           {submit}
         </button>
       </form>
       {footer}
-    </main>
+    </EntryShell>
   );
 }
 
@@ -175,7 +200,7 @@ function ProfileForm({
 export function Landing() {
   return (
     <ProfileForm
-      title="Cafecito"
+      title="Start a group"
       submit="Create group"
       footer={<EmailSignIn />}
       onDone={retryLoad}
@@ -189,7 +214,7 @@ export function Landing() {
         already? Open it to join.
       </p>
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Group name</span>
+        <span className="text-sm text-muted">Group name</span>
         <input name="groupName" required maxLength={60} className={field} />
       </label>
     </ProfileForm>
@@ -205,9 +230,9 @@ export function JoinForm({ token }: { token: string }) {
       .then(setInfo);
   }, [token]);
 
-  if (!info) return <main className="p-6 text-muted">Loading…</main>;
+  if (!info) return <EntryShell className="text-muted">Loading…</EntryShell>;
   if (info === "invalid")
-    return <main className="p-6">This invite link is no longer valid. Ask the group&apos;s owner for a new one.</main>;
+    return <EntryShell>This invite link is no longer valid. Ask the group&apos;s owner for a new one.</EntryShell>;
   return (
     <ProfileForm
       title={`Join ${info.groupName}`}
@@ -248,14 +273,14 @@ function EmailSignIn() {
     setSent(!error);
   };
   return (
-    <form onSubmit={submit} className="flex flex-col gap-2 border-t border-line pt-4 text-sm">
-      <h2 className="font-medium">Already in a group on another device?</h2>
+    <form onSubmit={submit} className="flex flex-col gap-3 border-t-2 border-line pt-5 text-[15px]">
+      <h2 className="round text-lg font-bold">Already in a group on another device?</h2>
       {sent ? (
         <p role="status">If that address is set for recovery in a group, a sign-in link is on its way. It works for 30 minutes.</p>
       ) : (
         <>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Your recovery email</span>
+            <span className="text-sm text-muted">Your recovery email</span>
             <input name="email" type="email" required autoComplete="email" className={field} />
           </label>
           {error && (
@@ -263,7 +288,7 @@ function EmailSignIn() {
               {error}
             </p>
           )}
-          <button className="self-start rounded-md border border-foreground px-3 py-1.5 font-medium">Email me a sign-in link</button>
+          <button className="btn btn-plain self-start">Email me a sign-in link</button>
         </>
       )}
     </form>
@@ -279,8 +304,8 @@ export function SignInLink({ token }: { token?: string }) {
     if (location.hash) history.replaceState(null, "", location.pathname);
   }, []);
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 pt-10 pb-16 text-sm">
-      <h1 className="text-2xl font-semibold tracking-tight">Sign in to Cafecito</h1>
+    <EntryShell className="text-[15px]">
+      <h1 className="round text-3xl font-extrabold tracking-tight">Sign in to Cafecito</h1>
       <p className="text-muted">This signs you in on this device.</p>
       {error && (
         <p role="alert" className="text-danger">
@@ -288,7 +313,7 @@ export function SignInLink({ token }: { token?: string }) {
         </p>
       )}
       <button
-        className="rounded-md bg-foreground px-3 py-2 font-medium text-background"
+        className="btn btn-sun py-3 text-[17px]"
         onClick={async () => {
           const error = await post("/api/sign-in/link", { token: secret });
           // A full load, so the app starts signed in.
@@ -299,6 +324,6 @@ export function SignInLink({ token }: { token?: string }) {
       >
         Sign in on this device
       </button>
-    </main>
+    </EntryShell>
   );
 }

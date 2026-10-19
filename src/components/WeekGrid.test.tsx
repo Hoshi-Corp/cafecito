@@ -44,11 +44,11 @@ function setup(props: Partial<Parameters<typeof WeekGrid>[0]> = {}) {
 }
 
 describe("WeekGrid", () => {
-  it("shows a header per column, hour labels in the gutter and a label on every cell", () => {
+  it("shows a header per column with today marked, hour labels in the gutter and a label on every cell", () => {
     const { getByText, queryByText, cell, container } = setup();
-    expect(getByText("Tue").className).toContain("text-accent");
-    expect(getByText("Mon").className).not.toContain("text-accent");
-    expect(getByText("13").className).toContain("text-accent");
+    expect(getByText("Tue").closest("[aria-current=date]")).toBeTruthy();
+    expect(getByText("Mon").closest("[aria-current=date]")).toBeNull();
+    expect(getByText("13").closest("[aria-current=date]")).toBeTruthy();
     expect(getByText("7 AM")).toBeTruthy();
     expect(queryByText("7:30 AM")).toBeNull();
     expect(container.querySelectorAll("[data-col]")).toHaveLength(9);

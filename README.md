@@ -20,9 +20,9 @@ Open http://localhost:4174. `pnpm test` runs the tests; `pnpm test --coverage` a
 
 ## Screenshots
 
-| Group heatmap and best times | Typical week |
-|---|---|
-| ![Group view: best times and the heatmap](docs/screenshots/group.png) | ![Painting a typical week](docs/screenshots/typical-week.png) |
+| Next time everyone is free | Group heatmap | Typical week |
+|---|---|---|
+| ![Group view: the next time everyone is free, over the park](docs/screenshots/group.png) | ![The group heatmap](docs/screenshots/week.png) | ![Painting a typical week](docs/screenshots/typical-week.png) |
 
 | Create a group | Invite link and members (owner) | Join screen |
 |---|---|---|
