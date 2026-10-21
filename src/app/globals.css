@@ -28,24 +28,33 @@
   --heat-full: var(--red);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #121a2b;
-    --foreground: #f4efe6;
-    --muted: #a7b0c2;
-    --line: #2a3550;
-    --cell: #222c42;
-    --card: #1a2337;
-    --ledge: #0b1120;
-    --sky: #1d3550;
-    --sky-edge: #0f2238;
-    --butter: #5c4a24;
-    --plan: #0d1424;
-    --plan-edge: #050a14;
-    --accent: #ffb066;
-    --busy: #4a5368;
-    --danger: #ff8a8a;
-  }
+/* The light follows the viewer's clock (src/lib/sky.ts). Night, and dark mode at any hour, turns the page dark. */
+:root[data-sky="dawn"] {
+  --sky: #fde4d2;
+  --sky-edge: #e8b896;
+}
+
+:root[data-sky="dusk"] {
+  --sky: #f8dbd2;
+  --sky-edge: #d9a08e;
+}
+
+:root[data-sky="night"] {
+  --background: #121a2b;
+  --foreground: #f4efe6;
+  --muted: #a7b0c2;
+  --line: #2a3550;
+  --cell: #222c42;
+  --card: #1a2337;
+  --ledge: #0b1120;
+  --sky: #1d3550;
+  --sky-edge: #0f2238;
+  --butter: #5c4a24;
+  --plan: #0d1424;
+  --plan-edge: #050a14;
+  --accent: #ffb066;
+  --busy: #4a5368;
+  --danger: #ff8a8a;
 }
 
 @theme inline {
