@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Google_Sans_Flex } from "next/font/google";
 import "./globals.css";
+import { SkyClock } from "@/components/SkyClock";
+import { SKY_SCRIPT } from "@/lib/sky";
 
 // Rounded corners (ROND) for headings, and optical sizes so the big day name and small labels both stay crisp.
 const flex = Google_Sans_Flex({
@@ -27,8 +29,15 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${flex.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+    // The script sets data-sky (dawn, day, dusk or night) from the viewer's clock before the first paint.
+    <html lang="en" className={`${flex.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SKY_SCRIPT }} />
+      </head>
+      <body className="min-h-full flex flex-col">
+        <SkyClock />
+        {children}
+      </body>
     </html>
   );
 }

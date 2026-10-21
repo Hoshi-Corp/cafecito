@@ -41,7 +41,11 @@ beforeEach(() => {
     },
   );
   vi.stubGlobal("matchMedia", (q: string) => ({ matches: !!media[q], addEventListener() {}, removeEventListener() {} }));
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance", "Date"] });
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame", "performance", "Date"],
+  });
+  // Midday on the viewer's clock, unless a test says otherwise.
+  vi.setSystemTime(new Date(2026, 6, 15, 12));
 });
 
 afterEach(() => {
@@ -191,7 +195,46 @@ describe("robins", () => {
   });
 });
 
-describe("at night", () => {
+describe("through the day, on the viewer's clock", () => {
+  const phase = () => vi.mocked(drawLandscape).mock.calls.at(-1)![1].phase;
+
+  it("dawn has flags and robins", () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 6, 30));
+    const { all } = park({ w: 1440, h: 640 });
+    expect(phase()).toBe("dawn");
+    expect(all(".scn-flag").length).toBeGreaterThan(0);
+    expect(all(".scn-bird")).toHaveLength(2);
+  });
+
+  it("dusk lights the fairy lights, and the robins are still about", () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 18, 30));
+    const { all } = park({ w: 1440, h: 640 });
+    expect(phase()).toBe("dusk");
+    expect(all(".scn-bulb").length).toBeGreaterThan(0);
+    expect(all(".scn-flag")).toHaveLength(0);
+    expect(all(".scn-bird")).toHaveLength(2);
+    expect(all(".scn-owl")).toHaveLength(0);
+  });
+
+  it("late at night it's night, even in light mode", () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 22, 30));
+    const { all } = park();
+    expect(phase()).toBe("night");
+    expect(all(".scn-owl")).toHaveLength(1);
+  });
+
+  it("a page left open turns to night at 8 pm", () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 19, 59, 30));
+    const { all } = park();
+    expect(all(".scn-owl")).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(phase()).toBe("night");
+    expect(all(".scn-owl")).toHaveLength(1);
+    expect(all(".scn-bird")).toHaveLength(0);
+  });
+});
+
+describe("in dark mode (night at any hour)", () => {
   beforeEach(() => {
     media[DARK] = true;
   });

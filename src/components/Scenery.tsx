@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { drawLandscape, drawTree, type Season } from "../lib/scenery";
+import { skyNow, subscribeSky, type Sky } from "../lib/sky";
 
 export interface Person {
   id: string;
@@ -32,12 +33,6 @@ function seasonNow(): Season {
 }
 
 const noop = () => () => {};
-const darkQuery = "(prefers-color-scheme: dark)";
-const subscribeDark = (change: () => void) => {
-  const q = window.matchMedia?.(darkQuery);
-  q?.addEventListener("change", change);
-  return () => q?.removeEventListener("change", change);
-};
 
 const FLAGS = ["#ef3b36", "#ff8a1f", "#ffc53d", "#17a08f"];
 
@@ -50,8 +45,8 @@ const along = ([ax, ay]: number[], [bx, by]: number[], sag: number, u: number) =
 /**
  * The group's own little park behind the top of the page: a painted landscape for this season, two maples with
  * bunting tied between them, and everyone's photo pegged to the bunting (tap one to see if they're free at the
- * next time). Birds by day; in dark mode it's night, with fairy lights and owls. Nothing renders on the server:
- * it all depends on the screen, the season and the colour scheme.
+ * next time). The light follows the viewer's clock: robins by day, fairy lights from dusk, owls at night (and in
+ * dark mode at any hour). Nothing renders on the server: it all depends on the screen, the season and the hour.
  */
 export function Scenery({ people, everyone }: { people: Person[]; /** Everyone is free at the next time. */ everyone: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -59,13 +54,13 @@ export function Scenery({ people, everyone }: { people: Person[]; /** Everyone i
   const trees = useRef<(HTMLCanvasElement | null)[]>([]);
   const birds = useRef<(HTMLDivElement | null)[]>([]);
   const mounted = useSyncExternalStore(noop, () => true, () => false);
-  const night = useSyncExternalStore(subscribeDark, () => !!window.matchMedia?.(darkQuery).matches, () => false);
+  const phase = useSyncExternalStore<Sky>(subscribeSky, skyNow, () => "day");
+  const night = phase === "night", lights = night || phase === "dusk";
   const [box, setBox] = useState<{ w: number; h: number } | null>(null);
   // Off screen, nothing moves: the birds stop and every animation pauses.
   const [onScreen, setOnScreen] = useState(true);
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const season = mounted ? seasonNow() : "summer";
-  const phase = night ? "night" : "day";
 
   useEffect(() => {
     const el = ref.current;
@@ -212,7 +207,7 @@ export function Scenery({ people, everyone }: { people: Person[]; /** Everyone i
               })}
           </svg>
           {strings.flatMap(({ a, b, sag, who }, si) => {
-            // Photos with a flag (or, at night, a little light) between each.
+            // Photos with a flag (or, from dusk, a little light) between each.
             const span = Math.hypot(b[0] - a[0], b[1] - a[1]), withFlags = span / (2 * who.length + 1) >= 30;
             const slots = withFlags ? 2 * who.length + 1 : who.length;
             return Array.from({ length: slots }, (_, k) => {
@@ -220,7 +215,7 @@ export function Scenery({ people, everyone }: { people: Person[]; /** Everyone i
               const person = withFlags ? (k % 2 ? who[(k - 1) / 2] : null) : who[k];
               const sway = { "--sw": `${2.4 + ((k * 37 + si * 11) % 10) / 6}s`, "--sd": `${-((k * 53) % 30) / 10}s` } as CSSProperties;
               if (!person)
-                return night ? (
+                return lights ? (
                   <span key={`${si}-${k}`} className="scn-hang scn-bulb" style={{ ...sway, left: x, top: y, "--c": FLAGS[k % 4] } as CSSProperties} />
                 ) : (
                   <span key={`${si}-${k}`} className="scn-hang scn-flag" style={{ ...sway, left: x, top: y, background: FLAGS[k % 4] }} />
