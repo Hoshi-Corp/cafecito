@@ -21,6 +21,9 @@ const status = (fn: () => void) => {
 const add = (db: ReturnType<typeof fresh>, by = "camille", body: object = {}) =>
   createPlace(db, "demo", by, { name: " Café X ", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", ...body }, 1000).id;
 
+/** Rating needs someone to have been. */
+const visit = (db: ReturnType<typeof fresh>, id: string) => (updatePlace(db, "demo", "diego", id, { beenThere: true }), id);
+
 describe("wishlist", () => {
   it("adds a place and lists it with its votes", () => {
     const db = fresh();
@@ -67,6 +70,7 @@ describe("wishlist", () => {
     add(db); // archiving made room
     expect(status(() => updatePlace(db, "demo", "camille", ids[0], { archived: false }))).toBe(409);
     expect(listPlaces(db, "demo")[0].archivedAt).not.toBeNull();
+    expect(status(() => updatePlace(db, "demo", "diego", ids[0], { archived: false }))).toBe(403); // not theirs: "not allowed", not "full"
     updatePlace(db, "demo", "camille", ids[1], { archived: false }); // not archived: nothing to bring back, so no check
     deletePlace(db, "demo", "camille", ids[2]);
     updatePlace(db, "demo", "camille", ids[0], { archived: false }); // room again
@@ -150,7 +154,7 @@ describe("wishlist", () => {
 describe("ratings and comments", () => {
   it("rates from half a star to five in halves, replaces and takes back my own rating", () => {
     const db = fresh();
-    const id = add(db);
+    const id = visit(db, add(db));
     ratePlace(db, "demo", "diego", id, { stars: 4 });
     ratePlace(db, "demo", "diego", id, { stars: 2.5 });
     ratePlace(db, "demo", "you", id, { stars: 5 });
@@ -163,6 +167,17 @@ describe("ratings and comments", () => {
     expect(status(() => ratePlace(db, "demo", "you", id, "5"))).toBe(400);
     for (const stars of [0, 6, 5.5, 2.25, 0.1, "3", undefined, -1, NaN]) expect(status(() => ratePlace(db, "demo", "you", id, { stars }))).toBe(400);
     expect(listPlaces(db, "demo")[0].ratings).toEqual({ you: 5 });
+  });
+
+  it("takes stars only once someone has been, and always lets me take mine back", () => {
+    const db = fresh();
+    const id = add(db);
+    expect(status(() => ratePlace(db, "demo", "you", id, { stars: 4 }))).toBe(409);
+    visit(db, id);
+    ratePlace(db, "demo", "you", id, { stars: 4 });
+    updatePlace(db, "demo", "diego", id, { beenThere: false });
+    clearRating(db, "demo", "you", id); // still allowed, though the place is no longer marked as visited
+    expect(listPlaces(db, "demo")[0].ratings).toEqual({});
   });
 
   it("adds comments in order, trimmed, and checks their length", () => {
@@ -219,7 +234,7 @@ describe("ratings and comments", () => {
 
   it("keeps a leaving member's comments without an author, drops their ratings, and everything goes with the group", () => {
     const db = fresh();
-    const id = add(db);
+    const id = visit(db, add(db));
     ratePlace(db, "demo", "diego", id, { stars: 4 });
     ratePlace(db, "demo", "sofia", id, { stars: 3 });
     addComment(db, "demo", "diego", id, { body: "mine" });
@@ -232,7 +247,7 @@ describe("ratings and comments", () => {
 
   it("exports my rating and comments, also for places I only rated or commented on", () => {
     const db = fresh();
-    const id = add(db, "diego", { name: "Rated" });
+    const id = visit(db, add(db, "diego", { name: "Rated" }));
     add(db, "diego", { name: "Unrelated" });
     ratePlace(db, "demo", "camille", id, { stars: 5 });
     addComment(db, "demo", "camille", id, { body: "Mine" }, 1000);
@@ -249,7 +264,7 @@ describe("removing a place", () => {
 
   it("takes it off the list and keeps its votes, ratings and comments as history", () => {
     const db = fresh();
-    const id = add(db);
+    const id = visit(db, add(db));
     votePlace(db, "demo", "diego", id, true);
     ratePlace(db, "demo", "diego", id, { stars: 4 });
     addComment(db, "demo", "diego", id, { body: "Nice" });
@@ -310,7 +325,7 @@ describe("removing a place", () => {
 
   it("is still in my export, marked removed, when I had a part in it", () => {
     const db = fresh();
-    const id = add(db, "camille", { name: "Gone" });
+    const id = visit(db, add(db, "camille", { name: "Gone" }));
     ratePlace(db, "demo", "camille", id, { stars: 2 });
     deletePlace(db, "demo", "camille", id);
     expect(exportMe(db, "camille").places).toEqual([expect.objectContaining({ name: "Gone", removed: true, myStars: 2 })]);

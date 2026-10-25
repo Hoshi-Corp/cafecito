@@ -3,7 +3,7 @@ import { openDb } from "./db";
 import { deleteMe } from "./account";
 import { HttpError, createGroup, loadGroup, patchOverrides, prune, removeMember } from "./groups";
 import { MAX_OUTINGS, answerOuting, createOuting, deleteOuting, listOutings } from "./outings";
-import { createPlace, deletePlace } from "./places";
+import { createPlace, deletePlace, updatePlace } from "./places";
 import { seed } from "./seed";
 import { QUANTA_PER_DAY, bestWindows, isSetUp, toQuantum } from "../lib/availability";
 
@@ -143,11 +143,14 @@ describe("outings", () => {
     expect(b).toMatchObject({ id: two, place: "Terrace", placeId: cafe });
   });
 
-  it("refuses a place of another group or a bad place id", () => {
+  it("refuses a place of another group, an archived place, or a bad place id", () => {
     const db = fresh();
     const other = createGroup(db, { groupName: "Other", name: "Zed" });
     const theirs = createPlace(db, other.groupId, other.memberId, { name: "Theirs" }).id;
+    const shelved = createPlace(db, "demo", "you", { name: "Shelved" }).id;
+    updatePlace(db, "demo", "you", shelved, { archived: true });
     const time = slot(db);
+    expect(status(() => createOuting(db, "demo", "you", { title: "x", placeId: shelved, ...time }, NOW))).toBe(404);
     expect(status(() => createOuting(db, "demo", "you", { title: "x", placeId: theirs, ...time }, NOW))).toBe(404);
     expect(status(() => createOuting(db, "demo", "you", { title: "x", placeId: "nope", ...time }, NOW))).toBe(404);
     expect(status(() => createOuting(db, "demo", "you", { title: "x", placeId: 5, ...time }, NOW))).toBe(400);

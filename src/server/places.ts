@@ -78,8 +78,10 @@ export function createPlace(db: Db, groupId: string, memberId: string, body: unk
 /** The place, if it is in the caller's group and not removed; `suggestedBy` says who may edit it. */
 function findPlace(db: Db, groupId: string, placeId: string) {
   const p = db
-    .prepare(`SELECT suggested_by suggestedBy, archived_at archivedAt FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL`)
-    .get(placeId, groupId) as { suggestedBy: string | null; archivedAt: number | null } | undefined;
+    .prepare(
+      `SELECT suggested_by suggestedBy, archived_at archivedAt, been_there beenThere FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL`,
+    )
+    .get(placeId, groupId) as { suggestedBy: string | null; archivedAt: number | null; beenThere: number } | undefined;
   if (!p) throw new HttpError(404, "No such place");
   return p;
 }
@@ -102,6 +104,8 @@ export function updatePlace(db: Db, groupId: string, memberId: string, placeId: 
   if (body.notes !== undefined) field("notes", cleanText(body.notes, 500, false));
   if (body.archived !== undefined) {
     if (typeof body.archived !== "boolean") throw bad("Invalid value");
+    // Who may comes before whether there is room, so someone who may not isn't told the list is full.
+    assertMayEdit(db, memberId, suggestedBy);
     const back = !body.archived && archivedAt !== null;
     if (back && (db.prepare(`SELECT count(*) n FROM place WHERE group_id = ? AND ${ACTIVE}`).get(groupId) as { n: number }).n >= MAX_PLACES)
       throw new HttpError(409, FULL);
@@ -132,10 +136,10 @@ export function deletePlace(db: Db, groupId: string, memberId: string, placeId: 
   db.prepare(`UPDATE place SET deleted_at = ? WHERE id = ?`).run(now, placeId);
 }
 
-/** My own star rating (half a star to 5, in halves), replacing an earlier one. */
+/** My own star rating (half a star to 5, in halves), replacing an earlier one; only once someone has been. */
 export function ratePlace(db: Db, groupId: string, memberId: string, placeId: string, body: unknown) {
   if (!isObject(body)) throw bad("Expected an object");
-  findPlace(db, groupId, placeId);
+  if (!findPlace(db, groupId, placeId).beenThere) throw new HttpError(409, "Mark it as Been there before rating it");
   const { stars } = body;
   if (typeof stars !== "number" || !Number.isInteger(stars * 2) || stars < 0.5 || stars > 5) throw bad("Stars go from half a star to 5, in halves");
   db.prepare(`INSERT INTO place_rating (place_id, member_id, stars) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET stars = excluded.stars`).run(placeId, memberId, stars);

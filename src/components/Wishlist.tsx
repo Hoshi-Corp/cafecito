@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { addComment, addPlace, archivePlace, clearRating, editPlace, ratePlace, removeComment, removePlace, setBeenThere, votePlace } from "@/lib/store";
 import type { Group, Place, PlaceFields } from "@/lib/types";
 import { Face } from "./Brand";
@@ -84,7 +84,7 @@ export function Wishlist({ group }: { group: Group }) {
   const [adding, setAdding] = useState(false);
   // The place open in the pop-up, and whether it's being edited.
   const [open, setOpen] = useState<{ id: string; editing: boolean } | null>(null);
-  // The name of the place just added, so the list turns to its page and marks it.
+  // The id of the place just added, so the list turns to its page and marks it.
   const [added, setAdded] = useState<string | null>(null);
   const all = group.places ?? [];
   const q = fold(query.trim());
@@ -92,7 +92,7 @@ export function Wishlist({ group }: { group: Group }) {
   const of = (l: List) => all.filter((p) => LISTS[l].holds(p) && matches(p));
   const found = of(list).sort(LISTS[list].order);
   const pages = Math.max(1, Math.ceil(found.length / PAGE));
-  const fresh = found.findIndex((p) => p.name === added);
+  const fresh = found.findIndex((p) => p.id === added);
   const current = fresh >= 0 ? Math.floor(fresh / PAGE) : Math.min(page, pages - 1);
   const go = (n: number) => {
     setAdded(null);
@@ -157,7 +157,7 @@ export function Wishlist({ group }: { group: Group }) {
               <span aria-hidden="true" className="absolute inset-x-0 top-0 h-2 bg-[linear-gradient(90deg,var(--red)_0_25%,var(--tang)_0_50%,var(--sun)_0_75%,var(--teal)_0)]" />
               <ul className="divide-y-2 divide-line">
                 {found.slice(current * PAGE, (current + 1) * PAGE).map((p) => (
-                  <PlaceRow key={p.id} place={p} group={group} fresh={p.name === added} onOpen={() => setOpen({ id: p.id, editing: false })} />
+                  <PlaceRow key={p.id} place={p} group={group} fresh={p.id === added} onOpen={() => setOpen({ id: p.id, editing: false })} />
                 ))}
               </ul>
               {pages > 1 && (
@@ -182,12 +182,12 @@ export function Wishlist({ group }: { group: Group }) {
           initial={EMPTY}
           submitLabel="Add"
           onSubmit={async (values) => {
-            const refused = await addPlace(values);
+            const { refused, id } = await addPlace(values);
             if (!refused) {
               // Show it where it lands: on To try, not hidden by a search, on its page.
               setQuery("");
               choose("try");
-              setAdded(values.name);
+              setAdded(id);
             }
             return refused;
           }}
@@ -195,11 +195,17 @@ export function Wishlist({ group }: { group: Group }) {
         />
       </Sheet>
       <Sheet title={opened ? (open.editing ? `Edit ${opened.name}` : opened.name) : ""} open={!!opened} onClose={() => setOpen(null)}>
+        {/* Keyed by place, so a draft comment or edit never carries over to another place. */}
         {opened &&
           (open.editing ? (
-            <EditPlace place={opened} onDone={() => setOpen({ id: opened.id, editing: false })} />
+            <EditPlace
+              key={opened.id}
+              place={opened}
+              // A save that finishes late only closes the editor if it is still showing this place.
+              onDone={() => setOpen((now) => (now?.id === opened.id && now.editing ? { id: opened.id, editing: false } : now))}
+            />
           ) : (
-            <PlaceDetails place={opened} group={group} onEdit={() => setOpen({ id: opened.id, editing: true })} />
+            <PlaceDetails key={opened.id} place={opened} group={group} onEdit={() => setOpen({ id: opened.id, editing: true })} />
           ))}
       </Sheet>
     </section>
@@ -410,19 +416,24 @@ const starsLabel = (v: number) => `${v} ${v === 1 ? "star" : "stars"}`;
  * my rating again takes it back. From the keyboard it's one stop: the arrow keys move by half a star, Delete clears.
  */
 function Rating({ place: p, meId, run }: { place: Place; meId: string; run: (write: Promise<string | null>) => void }) {
-  // My new rating shows at once, until the server's copy changes (or the write is refused), so quick taps and arrow
-  // presses build on each other.
+  // My newest choice shows at once and stays until the server has it too (or refuses it), so quick taps and arrow
+  // presses build on each other, even when the server's answer to an earlier one arrives in between.
   const saved = p.ratings[meId] ?? 0;
-  const [pending, setPending] = useState<{ from: number; to: number } | null>(null);
-  const mine = pending && pending.from === saved ? pending.to : saved;
+  const [pending, setPending] = useState<number | null>(null);
+  const latest = useRef(0);
+  // Once the server has it, its copy takes over again (so a change from my other device shows up).
+  if (pending !== null && pending === saved) setPending(null);
+  const mine = pending ?? saved;
   const [preview, setPreview] = useState<number | null>(null);
   const count = Object.keys(p.ratings).length;
   /** 0 takes my rating back. */
   const rate = (v: number) => {
     if (v === mine) return;
-    setPending({ from: saved, to: v });
+    setPending(v);
     const write = v ? ratePlace(p.id, v) : clearRating(p.id);
-    write.then((refused) => refused && setPending(null));
+    const n = ++latest.current;
+    // A refusal puts the server's rating back, unless I have chosen again since.
+    write.then((refused) => refused && n === latest.current && setPending(null));
     run(write);
   };
   const shown = preview ?? mine;
@@ -435,7 +446,9 @@ function Rating({ place: p, meId, run }: { place: Place; meId: string; run: (wri
         onPointerLeave={() => setPreview(null)}
         onKeyDown={(e) => {
           const at = STEPS.indexOf(mine);
-          const to = { ArrowRight: at + 1, ArrowUp: at + 1, ArrowLeft: at - 1, ArrowDown: at - 1, Home: 0, End: STEPS.length - 1 }[e.key];
+          // Down from no rating stays at no rating (it doesn't make half a star).
+          const down = at < 0 ? undefined : at - 1;
+          const to = { ArrowRight: at + 1, ArrowUp: at + 1, ArrowLeft: down, ArrowDown: down, Home: 0, End: STEPS.length - 1 }[e.key];
           if (e.key === "Delete" || e.key === "Backspace") {
             e.preventDefault();
             rate(0);
@@ -557,9 +570,9 @@ function PlaceForm({
 
 const EMPTY: PlaceFields = { name: "", link: "", mapLink: "", notes: "" };
 
-/** Saves only what changed; nothing changed means nothing is sent. */
+/** Saves only what changed since the editor opened, so a change someone else made meanwhile isn't sent back over theirs. */
 function EditPlace({ place: p, onDone }: { place: Place; onDone: () => void }) {
-  const initial = { name: p.name, link: p.link, mapLink: p.mapLink, notes: p.notes };
+  const [initial] = useState(() => ({ name: p.name, link: p.link, mapLink: p.mapLink, notes: p.notes }));
   return (
     <PlaceForm
       initial={initial}

@@ -13,6 +13,8 @@ export function Menu({ label, items }: { label: string; items: { label: string; 
     const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     const escape = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // This Escape is for the menu only: it must not also close a pop-up the menu sits in.
+      e.preventDefault();
       setOpen(false);
       ref.current?.querySelector("button")?.focus();
     };

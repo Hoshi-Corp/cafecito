@@ -78,13 +78,13 @@ it("upgrades comments to survive their author leaving: every comment is copied, 
   }
 });
 
-it("upgrades ratings to half stars: every rating is copied, halves are now allowed, and anything else is still refused", () => {
+it("upgrades from 1.1 to archiving and half stars: every place and rating is copied, halves are now allowed, and anything else is still refused", () => {
   const dir = mkdtempSync(join(tmpdir(), "cafecito-"));
   try {
     const file = join(dir, "old.db");
     const old = new Database(file);
     old.pragma("foreign_keys = ON");
-    const before = MIGRATIONS.length - 1;
+    const before = MIGRATIONS.length - 2; // both 1.2 migrations to run: the archive column, then the ratings rebuild
     MIGRATIONS.slice(0, before).forEach((sql) => old.exec(sql));
     old.pragma(`user_version = ${before}`);
     old.exec(`INSERT INTO "group" VALUES ('g', 'G', 30);
@@ -99,6 +99,8 @@ it("upgrades ratings to half stars: every rating is copied, halves are now allow
       { memberId: "a", stars: 4 },
       { memberId: "b", stars: 1 },
     ]);
+    expect(db.prepare(`SELECT name, archived_at archivedAt FROM place`).all()).toEqual([{ name: "Café", archivedAt: null }]);
+    expect(db.pragma("foreign_key_check")).toEqual([]);
     db.prepare(`UPDATE place_rating SET stars = 2.5 WHERE member_id = 'a'`).run();
     for (const stars of [0, 0.25, 5.5]) expect(() => db.prepare(`UPDATE place_rating SET stars = ? WHERE member_id = 'b'`).run(stars)).toThrow(/CHECK/);
     db.prepare(`DELETE FROM place WHERE id = 'p'`).run(); // the ratings still go with their place

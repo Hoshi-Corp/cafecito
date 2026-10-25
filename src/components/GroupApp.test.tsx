@@ -486,12 +486,27 @@ describe("wishlist", () => {
   const many = (n: number, extra: object = {}) =>
     Array.from({ length: n }, (_, i) => ({ ...place, id: `m${i}`, name: `Place ${i + 1}`, link: "", mapLink: "", notes: "", votes: [], createdAt: NOW - i * DAY, ...extra }));
 
-  // jsdom has no modal dialogs; the browser's showModal opens one on top of the page.
+  // jsdom has no modal dialogs; the browser's showModal opens one on top of the page, and close puts focus back.
+  let closed = 0;
   beforeEach(() => {
+    closed = 0;
     HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
       this.setAttribute("open", "");
     };
+    HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+      // Only a dialog still on the page can hand focus back when it closes.
+      if (this.isConnected) closed++;
+      this.removeAttribute("open");
+    };
   });
+  /** Serves `group` from now on (a live update), and loads it. */
+  const update = async (group: Group) => {
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method) writes.push({ path: url.replace("/api/groups/me", ""), body: init.body ? JSON.parse(init.body as string) : null });
+      return { ok: true, json: async () => group };
+    });
+    await act(() => retryLoad());
+  };
 
   const section = () => within(screen.getByRole("heading", { name: "Wishlist" }).closest("section")!);
   /** The names in the list, top to bottom. */
@@ -600,6 +615,7 @@ describe("wishlist", () => {
     // The server answers the add, then sends the list with the new place in it (nobody wants to go yet, so it's last).
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (init?.method) writes.push({ path: url.replace("/api/groups/me", ""), body: JSON.parse(init.body as string) });
+      if (init?.method === "POST") return { ok: true, json: async () => ({ id: "new" }) };
       return { ok: true, json: async () => (writes.length ? { ...before, places: [...before.places, { ...wanted, id: "new", name: "Café New", votes: [], createdAt: NOW }] } : before) };
     });
     fireEvent.click(screen.getByRole("button", { name: "+ Add a place" }));
@@ -618,6 +634,22 @@ describe("wishlist", () => {
     expect(titles()).toHaveLength(8);
   });
 
+  it("finds a just-added place by its id, not its name, when another place has the same name", async () => {
+    const before = { ...crew, places: [...many(8, { votes: ["a"] }), { ...wanted, id: "old", name: "Café New", votes: ["a", "b"] }] };
+    await open(before);
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method) writes.push({ path: url.replace("/api/groups/me", ""), body: JSON.parse(init.body as string) });
+      if (init?.method === "POST") return { ok: true, json: async () => ({ id: "new" }) };
+      return { ok: true, json: async () => (writes.length ? { ...before, places: [...before.places, { ...wanted, id: "new", name: "Café New", votes: [], createdAt: NOW }] } : before) };
+    });
+    fireEvent.click(screen.getByRole("button", { name: "+ Add a place" }));
+    fireEvent.change(sheet("Add a place").getByLabelText("Name"), { target: { value: "Café New" } });
+    fireEvent.click(sheet("Add a place").getByRole("button", { name: "Add" }));
+    await vi.waitFor(() => expect(screen.getByText("Page 2 of 2")).toBeTruthy()); // the new one sorts last, onto page 2
+    const rows = section().getAllByRole("listitem");
+    expect(rows.map((r) => r.className.includes("bg-butter"))).toEqual([false, true]);
+  });
+
   it("closes a pop-up with Cancel, ✕, Escape or a tap outside it, and starts over empty", async () => {
     await open();
     const add = () => fireEvent.click(screen.getByRole("button", { name: "+ Add a place" }));
@@ -629,6 +661,7 @@ describe("wishlist", () => {
     expect((sheet("Add a place").getByLabelText("Name") as HTMLInputElement).value).toBe("");
     fireEvent.click(sheet("Add a place").getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(closed).toBe(2); // closed, not just taken off the page, so focus goes back to the button that opened it
     add();
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -738,8 +771,10 @@ describe("wishlist", () => {
     expect(screen.getByRole("menu")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Tab" });
     expect(screen.getByRole("menu")).toBeTruthy();
-    fireEvent.keyDown(document, { key: "Escape" });
+    // The menu's Escape is used up there, so the browser doesn't also close the pop-up around it.
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false);
     expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Café X" })).toBeTruthy();
     expect(document.activeElement).toBe(button);
     fireEvent.click(button);
     fireEvent.pointerDown(document.body);
@@ -778,6 +813,42 @@ describe("wishlist", () => {
     fireEvent.click(sheet("Edit Café X").getByRole("button", { name: "Save" }));
     expect(await sent(1)).toEqual([{ path: "/places/p1", body: { name: "Café Z", link: "" } }]);
     await vi.waitFor(() => expect(screen.getByRole("dialog", { name: "Café X" })).toBeTruthy());
+  });
+
+  it("doesn't jump back to a place whose save finishes after I've opened another, and keeps drafts with their place", async () => {
+    await open({ ...crew, places: [place, wanted] }); // Ana owns the group
+    let finish = () => {};
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        writes.push({ path: url.replace("/api/groups/me", ""), body: JSON.parse(init.body as string) });
+        await new Promise<void>((done) => (finish = done)); // a slow connection
+      }
+      return { ok: true, json: async () => ({ ...crew, places: [place, wanted] }) };
+    });
+    openPlace("Café X");
+    menu("Café X", "Edit");
+    fireEvent.change(sheet("Edit Café X").getByLabelText("Notes (optional)"), { target: { value: "Closed Mondays" } });
+    fireEvent.click(sheet("Edit Café X").getByRole("button", { name: "Save" }));
+    await sent(1);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    openPlace("Wanted");
+    fireEvent.change(sheet("Wanted").getByLabelText("Your comment"), { target: { value: "Draft for Wanted" } });
+    await act(async () => finish());
+    expect(screen.getByRole("dialog", { name: "Wanted" })).toBeTruthy();
+    expect((sheet("Wanted").getByLabelText("Your comment") as HTMLTextAreaElement).value).toBe("Draft for Wanted");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    openPlace("Café X");
+    expect((sheet("Café X").getByLabelText("Your comment") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("only sends back the fields I changed, even when someone else changed others while I was editing", async () => {
+    await open({ ...crew, places: [place] });
+    openPlace("Café X");
+    menu("Café X", "Edit");
+    await update({ ...crew, places: [{ ...place, name: "Café X (new spot)" }] }); // renamed meanwhile
+    fireEvent.change(sheet("Edit Café X (new spot)").getByLabelText("Notes (optional)"), { target: { value: "Bigger now" } });
+    fireEvent.click(sheet("Edit Café X (new spot)").getByRole("button", { name: "Save" }));
+    expect(await sent(1)).toEqual([{ path: "/places/p1", body: { notes: "Bigger now" } }]);
   });
 
   it("cancels an edit, and keeps it open with the reason when refused", async () => {
@@ -864,10 +935,33 @@ describe("wishlist", () => {
     ]);
   });
 
+  it("keeps my newest stars when the server's answer to an earlier press arrives in between", async () => {
+    const stars = await rated({ a: 3.5 });
+    const checked = () => stars.getAllByRole("radio").find((r) => r.getAttribute("aria-checked") === "true")?.getAttribute("aria-label");
+    const mine = stars.getAllByRole("radio")[6];
+    fireEvent.keyDown(mine, { key: "ArrowRight" });
+    fireEvent.keyDown(mine, { key: "ArrowRight" });
+    expect(checked()).toBe("4.5 stars");
+    const withRating = (a: number) => ({ ...crew, meId: "a", places: [{ ...visited, name: "Café X", id: "p1", ratings: { a } }] });
+    await update(withRating(4)); // the server has the first press so far
+    expect(checked()).toBe("4.5 stars");
+    fireEvent.keyDown(mine, { key: "ArrowRight" });
+    expect(checked()).toBe("5 stars");
+    await update(withRating(5)); // it has caught up: its copy takes over again
+    await update(withRating(3)); // changed on my other device
+    expect(checked()).toBe("3 stars");
+    expect(writes.map((w) => w.body)).toEqual([{ stars: 4 }, { stars: 4.5 }, { stars: 5 }]);
+  });
+
   it("starts the keyboard on half a star when I haven't rated, and puts my old rating back when a new one is refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const stars = await rated({});
     expect(stars.getAllByRole("radio").filter((r) => r.tabIndex === 0).map((r) => r.getAttribute("aria-label"))).toEqual(["0.5 stars"]);
+    fireEvent.keyDown(stars.getAllByRole("radio")[0], { key: "ArrowLeft" }); // down from no rating: no half star
+    fireEvent.keyDown(stars.getAllByRole("radio")[0], { key: "ArrowDown" });
+    expect(stars.getAllByRole("radio").filter((r) => r.getAttribute("aria-checked") === "true")).toEqual([]);
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+    expect(writes).toEqual([]);
     expect(sheet("Café X").getByText("No ratings yet")).toBeTruthy();
     cleanup();
     const again = await rated({ a: 2 });
