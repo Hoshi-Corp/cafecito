@@ -29,7 +29,7 @@ describe("wishlist", () => {
     votePlace(db, "demo", "diego", id, true); // twice: still one vote
     votePlace(db, "demo", "you", id, true);
     expect(listPlaces(db, "demo")).toEqual([
-      { id, name: "Café X", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "camille", beenThere: false, votes: ["diego", "you"], ratings: {}, comments: [] },
+      { id, name: "Café X", link: "https://x.example/", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "camille", beenThere: false, createdAt: 1000, archivedAt: null, votes: ["diego", "you"], ratings: {}, comments: [] },
     ]);
     votePlace(db, "demo", "diego", id, false);
     votePlace(db, "demo", "sofia", id, false); // never voted: nothing happens
@@ -59,10 +59,18 @@ describe("wishlist", () => {
     expect(listPlaces(db, "demo")[0]).toMatchObject({ link: "http://cafe.example/", mapLink: "https://maps.example/a%20b" });
   });
 
-  it("caps the wishlist", () => {
+  it("caps the wishlist, not counting archived places, and won't bring one back onto a full list", () => {
     const db = fresh();
-    for (let i = 0; i < MAX_PLACES; i++) add(db);
+    const ids = Array.from({ length: MAX_PLACES }, () => add(db));
     expect(status(() => add(db))).toBe(409);
+    updatePlace(db, "demo", "camille", ids[0], { archived: true });
+    add(db); // archiving made room
+    expect(status(() => updatePlace(db, "demo", "camille", ids[0], { archived: false }))).toBe(409);
+    expect(listPlaces(db, "demo")[0].archivedAt).not.toBeNull();
+    updatePlace(db, "demo", "camille", ids[1], { archived: false }); // not archived: nothing to bring back, so no check
+    deletePlace(db, "demo", "camille", ids[2]);
+    updatePlace(db, "demo", "camille", ids[0], { archived: false }); // room again
+    expect(listPlaces(db, "demo").filter((p) => !p.archivedAt)).toHaveLength(MAX_PLACES);
   });
 
   it("lets anyone mark it visited, but only its suggester or the owner edit the details", () => {
@@ -79,6 +87,20 @@ describe("wishlist", () => {
     expect(status(() => updatePlace(db, "demo", "camille", id, {}))).toBe(400);
     expect(status(() => updatePlace(db, "demo", "camille", id, { beenThere: "yes" }))).toBe(400);
     expect(status(() => updatePlace(db, "demo", "camille", id, { link: "javascript:1" }))).toBe(400);
+  });
+
+  it("archives and brings back a place, by its suggester or the owner, keeping the first archive date", () => {
+    const db = fresh();
+    const id = add(db);
+    votePlace(db, "demo", "diego", id, true);
+    expect(status(() => updatePlace(db, "demo", "diego", id, { archived: true }))).toBe(403);
+    updatePlace(db, "demo", "camille", id, { archived: true }, 5000);
+    updatePlace(db, "demo", "you", id, { archived: true }, 9000); // already archived: the date stays
+    // Still loaded, with its votes, so it can be shown under Archived.
+    expect(listPlaces(db, "demo")[0]).toMatchObject({ archivedAt: 5000, votes: ["diego"] });
+    expect(status(() => updatePlace(db, "demo", "camille", id, { archived: "yes" }))).toBe(400);
+    updatePlace(db, "demo", "you", id, { archived: false });
+    expect(listPlaces(db, "demo")[0].archivedAt).toBeNull();
   });
 
   it("lets only the suggester or the owner delete", () => {
@@ -126,18 +148,20 @@ describe("wishlist", () => {
 });
 
 describe("ratings and comments", () => {
-  it("rates from one to five, replaces and takes back my own rating", () => {
+  it("rates from half a star to five in halves, replaces and takes back my own rating", () => {
     const db = fresh();
     const id = add(db);
     ratePlace(db, "demo", "diego", id, { stars: 4 });
-    ratePlace(db, "demo", "diego", id, { stars: 2 });
+    ratePlace(db, "demo", "diego", id, { stars: 2.5 });
     ratePlace(db, "demo", "you", id, { stars: 5 });
-    expect(listPlaces(db, "demo")[0].ratings).toEqual({ diego: 2, you: 5 });
+    ratePlace(db, "demo", "sofia", id, { stars: 0.5 });
+    expect(listPlaces(db, "demo")[0].ratings).toEqual({ diego: 2.5, you: 5, sofia: 0.5 });
+    clearRating(db, "demo", "sofia", id);
     clearRating(db, "demo", "diego", id);
     clearRating(db, "demo", "sofia", id); // never rated: nothing happens
     expect(listPlaces(db, "demo")[0].ratings).toEqual({ you: 5 });
     expect(status(() => ratePlace(db, "demo", "you", id, "5"))).toBe(400);
-    for (const stars of [0, 6, 2.5, "3", undefined, -1]) expect(status(() => ratePlace(db, "demo", "you", id, { stars }))).toBe(400);
+    for (const stars of [0, 6, 5.5, 2.25, 0.1, "3", undefined, -1, NaN]) expect(status(() => ratePlace(db, "demo", "you", id, { stars }))).toBe(400);
     expect(listPlaces(db, "demo")[0].ratings).toEqual({ you: 5 });
   });
 

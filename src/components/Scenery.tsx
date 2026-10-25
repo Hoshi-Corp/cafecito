@@ -79,7 +79,8 @@ export function Scenery({ people, everyone }: { people: Person[]; /** Everyone i
   const W = box?.w ?? 0, Hh = box?.h ?? 0, wide = W >= 1024;
   const band = wide ? 300 : 230, ground = Hh - (wide ? 62 : 56);
   const th = wide ? Math.min(400, ground - 30) : 200, tw = (th * 220) / 360;
-  const contentRight = Math.max(20, (W - 1200) / 2 + 20) + 560;
+  // The headline's right edge: the page is 1200 px wide, 1480 px from 1360 px up (the `wide` breakpoint).
+  const contentRight = Math.max(20, (W - (W >= 1360 ? 1480 : 1200)) / 2 + 20) + 560;
   const xs = wide ? [Math.max(W * 0.7, contentRight + tw * 0.55), W * 0.985] : [W * 0.04, W * 0.96];
   const strings: { a: number[]; b: number[]; sag: number; who: Person[] }[] = [];
   if (box) {

@@ -57,6 +57,11 @@
   --danger: #ff8a8a;
 }
 
+/* Wide enough for the wishlist to get its own column beside the week (GroupApp.tsx). */
+@theme {
+  --breakpoint-wide: 85rem;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -167,6 +172,88 @@ body {
     text-underline-offset: 3px;
   }
 
+  /* A small, quiet pill: Map, comments, Add a comment. */
+  .mini {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--card);
+    box-shadow: 0 0 0 2px var(--line);
+    transition: background 0.2s, color 0.2s;
+  }
+  .mini:hover {
+    color: var(--foreground);
+    background: var(--cell);
+  }
+
+  /* A round button holding only an icon: a card's ⋯ menu, closing a pop-up. */
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 999px;
+    color: var(--muted);
+    transition: background 0.2s, color 0.2s;
+  }
+  .icon-btn:hover,
+  .icon-btn[aria-expanded="true"] {
+    color: var(--foreground);
+    background: var(--cell);
+  }
+
+  /* The list a ⋯ button opens (Menu.tsx). */
+  .menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 20;
+    display: flex;
+    min-width: 11rem;
+    flex-direction: column;
+    padding: 0.35rem;
+    border-radius: 16px;
+    background: var(--card);
+    box-shadow: 0 0 0 2px var(--line), 0 5px 0 var(--ledge), 0 18px 30px -18px rgb(28 40 64 / 0.45);
+    transform-origin: top right;
+    animation: pop 0.18s cubic-bezier(0.3, 1.4, 0.5, 1);
+  }
+  .menu-item {
+    border-radius: 11px;
+    padding: 0.55rem 0.8rem;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .menu-item:hover,
+  .menu-item:focus-visible {
+    background: var(--cell);
+  }
+
+  /* A pop-up card over the page (Sheet.tsx). */
+  .sheet {
+    margin: auto;
+    width: min(30rem, calc(100% - 2rem));
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0;
+    border-radius: 22px;
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow: 0 6px 0 var(--ledge), 0 30px 60px -20px rgb(0 0 0 / 0.45);
+    animation: sheet-in 0.28s cubic-bezier(0.3, 1.3, 0.5, 1);
+  }
+  .sheet::backdrop {
+    background: rgb(15 22 38 / 0.45);
+    backdrop-filter: blur(2px);
+  }
+
   .section-title {
     margin-bottom: 0.75rem;
     font-size: 1.5rem;
@@ -192,6 +279,9 @@ body {
 @keyframes lift {
   from { --lift: 0; transform: translateY(6px); }
   to { --lift: 1; transform: none; }
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
 }
 @keyframes pop {
   from { transform: scale(0.7); }

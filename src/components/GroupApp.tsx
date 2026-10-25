@@ -30,6 +30,7 @@ import { Scenery } from "./Scenery";
 import { ColorPicker, Landing } from "./Entry";
 import { Manage } from "./Manage";
 import { Outings, ProposeForm } from "./Outings";
+import { Segmented } from "./Segmented";
 import { Wishlist } from "./Wishlist";
 import { WeekGrid, type CellRange, type GridColumn, type GridRow } from "./WeekGrid";
 
@@ -213,7 +214,6 @@ function GroupView({ group }: { group: Group }) {
   ];
   const activeBrush = tab === "typical" && brush === "b" ? null : brush;
   const preview = activeBrush ? (MARK_STYLE[activeBrush].background as string) : "var(--line)";
-  const tabIndex = TABS.findIndex((t) => t.id === tab);
 
   return (
     <div className="flex flex-col">
@@ -228,23 +228,21 @@ function GroupView({ group }: { group: Group }) {
         onPick={showWindow}
       />
 
-      <main className="mx-auto grid w-full max-w-[1200px] gap-10 px-5 pt-7 pb-16 lg:grid-cols-[380px_minmax(0,1fr)] lg:gap-12 lg:pt-9">
-        {/* On phones the week comes right after the best times; on wide screens it gets its own column. */}
-        <div className="flex flex-col gap-10 max-lg:contents">
+      {/* Phones: one column, the week right after the best times. Desktops: the week beside them, the wishlist under the
+          week. Wide screens: the wishlist gets a third column. */}
+      <main className="mx-auto grid w-full max-w-[1200px] gap-10 px-5 pt-7 pb-16 lg:grid-cols-[380px_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-12 lg:pt-9 wide:max-w-[1480px] wide:grid-cols-[340px_minmax(0,1fr)_360px] wide:grid-rows-none wide:gap-10">
+        <div className="flex flex-col gap-10 max-lg:contents lg:row-span-2 wide:row-span-1">
           <div className="flex flex-col gap-4 max-lg:order-1">
             <BestWindows windows={windows} total={active.length} zone={zone} onPick={showWindow} onPropose={setProposing} />
             {waiting.length > 0 && (
               <p className="text-[15px] text-muted">Not counted yet, nothing marked: {waiting.map(nameOf).join(", ")}.</p>
             )}
             {proposing && (
-              <ProposeForm key={proposing.startQ} window={proposing} places={group.places ?? []} zone={zone} onDone={() => setProposing(null)} />
+              <ProposeForm key={proposing.startQ} window={proposing} places={(group.places ?? []).filter((p) => !p.archivedAt)} zone={zone} onDone={() => setProposing(null)} />
             )}
           </div>
           <div className="empty:hidden max-lg:order-3">
             <Outings group={group} zone={zone} now={now} />
-          </div>
-          <div className="max-lg:order-4">
-            <Wishlist group={group} />
           </div>
         </div>
 
@@ -253,25 +251,7 @@ function GroupView({ group }: { group: Group }) {
             The week
           </h2>
           <div className="card flex flex-col gap-4 p-4 sm:p-6">
-            <nav className="relative grid grid-cols-3 rounded-2xl bg-cell p-1 text-[15px]">
-              <span
-                aria-hidden="true"
-                className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-xl bg-foreground shadow-[0_3px_0_var(--ledge)] transition-transform duration-500 ease-[cubic-bezier(.3,1.35,.5,1)]"
-                style={{ transform: `translateX(${tabIndex * 100}%)` }}
-              />
-              {TABS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  aria-pressed={tab === t.id}
-                  className={`round relative rounded-xl px-1 py-2.5 font-semibold transition-colors duration-300 ${
-                    tab === t.id ? "text-background" : ""
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </nav>
+            <Segmented options={TABS} value={tab} onChange={setTab} />
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               {tab === "typical" ? (
@@ -397,7 +377,11 @@ function GroupView({ group }: { group: Group }) {
           </div>
         </section>
 
-        <div className="max-lg:order-5 lg:col-span-2">
+        <div className="min-w-0 max-lg:order-4 lg:col-start-2 wide:col-start-3 wide:row-start-1">
+          <Wishlist group={group} />
+        </div>
+
+        <div className="max-lg:order-5 lg:col-span-2 wide:col-span-3">
           <Settings group={group} me={me} allHours={allHours} onAllHours={setAllHours} />
         </div>
       </main>
@@ -440,7 +424,7 @@ function Hero({
         everyone={!!next && total > 0 && next.free.length === total}
       />
       {/* Only the content itself takes taps, so the photos on the bunting behind it can be flipped. */}
-      <div className="pointer-events-none mx-auto max-w-[1200px] px-5 [&>*]:pointer-events-auto">
+      <div className="pointer-events-none mx-auto max-w-[1200px] px-5 wide:max-w-[1480px] [&>*]:pointer-events-auto">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <div className="mr-auto flex items-center gap-2">
             <Logo size={30} className="text-foreground" />

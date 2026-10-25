@@ -213,6 +213,8 @@ export const setBeenThere = (id: string, beenThere: boolean) => listWrite(`/plac
 
 export const removePlace = (id: string) => listWrite(`/places/${id}`, "DELETE");
 
+export const archivePlace = (id: string, archived: boolean) => listWrite(`/places/${id}`, "PATCH", { archived });
+
 export const editPlace = (id: string, fields: Partial<PlaceFields>) =>
   listWrite(`/places/${id}`, "PATCH", fields);
 

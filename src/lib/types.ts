@@ -94,9 +94,13 @@ export interface Place {
   /** Who suggested it; null once they left the group. */
   suggestedBy: string | null;
   beenThere: boolean;
+  /** Epoch ms. */
+  createdAt: number;
+  /** Epoch ms when it was archived, or null while it is on the list. */
+  archivedAt: number | null;
   /** Members who want to go. */
   votes: string[];
-  /** Stars (1 to 5) by member id; members who have not rated are absent. */
+  /** Stars (0.5 to 5, in halves) by member id; members who have not rated are absent. */
   ratings: Record<string, number>;
   /** Oldest first. */
   comments: PlaceComment[];
