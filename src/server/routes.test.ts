@@ -273,6 +273,7 @@ describe("wishlist rating and comment routes", () => {
     as("camille");
     await places.POST(req({ name: "Café X" }), ctx());
     const { id } = getDb().prepare(`SELECT id FROM place WHERE deleted_at IS NULL`).get() as { id: string };
+    getDb().prepare(`UPDATE place SET been_there = 1`).run(); // stars only once someone has been
     jar.clear();
     expect((await placeRating.PUT(req({ stars: 4 }), one(id))).status).toBe(401);
     expect((await placeComments.POST(req({ body: "hi" }), one(id))).status).toBe(401);

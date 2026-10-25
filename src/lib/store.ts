@@ -107,7 +107,8 @@ async function load() {
  * Sends one write after the previous one, so changes land in the order they were made.
  * Resolves to the server's refusal message (or a generic one), or null once the write is saved.
  */
-function send(path: string, method: "PATCH" | "POST" | "PUT" | "DELETE", body?: unknown): Promise<string | null> {
+/** `read`, if given, gets the server's answer to a write that went through (a new place's id, say). */
+function send(path: string, method: "PATCH" | "POST" | "PUT" | "DELETE", body?: unknown, read?: (answer: unknown) => void): Promise<string | null> {
   pending++;
   let refusal: string | null = null;
   const run = queue
@@ -121,6 +122,7 @@ function send(path: string, method: "PATCH" | "POST" | "PUT" | "DELETE", body?: 
         refusal = (await res.json().catch(() => null))?.error ?? "Could not save that. Try again.";
         throw new Error(`${method} ${path}: ${res.status}`);
       }
+      read?.(await res.json().catch(() => null));
     })
     .catch((e) => {
       console.error("Change not saved, reloading", e);
@@ -205,7 +207,15 @@ export const answerOuting = (id: string, answer: Rsvp, markBusy = false) =>
 
 export const removeOuting = (id: string) => listWrite(`/outings/${id}`, "DELETE");
 
-export const addPlace = (place: PlaceFields) => listWrite("/places", "POST", place);
+/** The new place's id, or why it was refused. */
+export async function addPlace(place: PlaceFields): Promise<{ refused: string | null; id: string | null }> {
+  let id: string | null = null;
+  const refused = await listWrite("/places", "POST", place, (answer) => {
+    const given = (answer as { id?: unknown } | null)?.id;
+    id = typeof given === "string" ? given : null;
+  });
+  return { refused, id };
+}
 
 export const votePlace = (id: string, on: boolean) => listWrite(`/places/${id}/vote`, on ? "PUT" : "DELETE");
 

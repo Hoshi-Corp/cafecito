@@ -2,17 +2,26 @@
 
 import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
 
+type Props = { title: string; open: boolean; onClose: () => void; children: ReactNode };
+
 /**
  * A pop-up card over the page: a modal <dialog>, so focus stays inside and the page behind can't be used. Escape,
  * the ✕, or a tap on the dimmed page closes it. It only exists while open, so a form inside starts fresh each time.
  */
-export function Sheet({ title, open, onClose, children }: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
+export function Sheet(props: Props) {
+  return props.open ? <OpenSheet {...props} /> : null;
+}
+
+function OpenSheet({ title, onClose, children }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useLayoutEffect(() => {
-    if (open) ref.current?.showModal();
-  }, [open]);
-  if (!open) return null;
+    const dialog = ref.current!;
+    dialog.showModal();
+    // Its own component, so this runs while the dialog is still on the page: closing it there (not only taking it
+    // off) is what puts keyboard focus back where it was before it opened.
+    return () => dialog.close();
+  }, []);
   return (
     <dialog
       ref={ref}

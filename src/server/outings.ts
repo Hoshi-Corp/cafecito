@@ -41,11 +41,11 @@ export function createOuting(db: Db, groupId: string, memberId: string, body: un
   if (n >= MAX_OUTINGS) throw new HttpError(409, `A group can have ${MAX_OUTINGS} plans at a time`);
   const title = cleanText(body.title, 80, true);
   let place = cleanText(body.place, 120, false);
-  // A wishlist place must be in this group; without a typed "where" its name stands in.
+  // A wishlist place must be in this group and on the list (not archived); without a typed "where" its name stands in.
   let placeId: string | null = null;
   if (body.placeId !== undefined && body.placeId !== null) {
     if (typeof body.placeId !== "string") throw bad("Invalid place");
-    const p = db.prepare(`SELECT id, name FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL`).get(body.placeId, groupId) as { id: string; name: string } | undefined;
+    const p = db.prepare(`SELECT id, name FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL AND archived_at IS NULL`).get(body.placeId, groupId) as { id: string; name: string } | undefined;
     if (!p) throw new HttpError(404, "No such place");
     placeId = p.id;
     place ||= p.name.slice(0, 120);
