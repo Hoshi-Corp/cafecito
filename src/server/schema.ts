@@ -171,4 +171,20 @@ export const MIGRATIONS = [
     private_key TEXT NOT NULL
   );
   `,
+  // 1.2: an archived wishlist place leaves the list to try but keeps everything, and can come back.
+  `
+  ALTER TABLE place ADD COLUMN archived_at INTEGER;
+  `,
+  // 1.2: half stars (0.5 to 5). SQLite cannot change a CHECK in place, so the table is rebuilt with every rating copied.
+  `
+  CREATE TABLE place_rating_new (
+    place_id TEXT NOT NULL REFERENCES place(id) ON DELETE CASCADE,
+    member_id TEXT NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    stars REAL NOT NULL CHECK (stars BETWEEN 0.5 AND 5 AND stars * 2 = CAST(stars * 2 AS INTEGER)),
+    PRIMARY KEY (place_id, member_id)
+  ) WITHOUT ROWID;
+  INSERT INTO place_rating_new SELECT place_id, member_id, stars FROM place_rating;
+  DROP TABLE place_rating;
+  ALTER TABLE place_rating_new RENAME TO place_rating;
+  `,
 ];

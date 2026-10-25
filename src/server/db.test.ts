@@ -77,3 +77,34 @@ it("upgrades comments to survive their author leaving: every comment is copied, 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it("upgrades ratings to half stars: every rating is copied, halves are now allowed, and anything else is still refused", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cafecito-"));
+  try {
+    const file = join(dir, "old.db");
+    const old = new Database(file);
+    old.pragma("foreign_keys = ON");
+    const before = MIGRATIONS.length - 1;
+    MIGRATIONS.slice(0, before).forEach((sql) => old.exec(sql));
+    old.pragma(`user_version = ${before}`);
+    old.exec(`INSERT INTO "group" VALUES ('g', 'G', 30);
+      INSERT INTO member (id, group_id, name, color, time_zone, role, pattern, position) VALUES ('a', 'g', 'Ana', '#000000', 'UTC', 'owner', '', 0), ('b', 'g', 'Ben', '#000000', 'UTC', 'member', '', 1);
+      INSERT INTO place (id, group_id, name, created_at) VALUES ('p', 'g', 'Café', 1);
+      INSERT INTO place_rating VALUES ('p', 'a', 4), ('p', 'b', 1);`);
+    old.close();
+
+    const db = openDb(file);
+    expect(db.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
+    expect(db.prepare(`SELECT member_id memberId, stars FROM place_rating ORDER BY member_id`).all()).toEqual([
+      { memberId: "a", stars: 4 },
+      { memberId: "b", stars: 1 },
+    ]);
+    db.prepare(`UPDATE place_rating SET stars = 2.5 WHERE member_id = 'a'`).run();
+    for (const stars of [0, 0.25, 5.5]) expect(() => db.prepare(`UPDATE place_rating SET stars = ? WHERE member_id = 'b'`).run(stars)).toThrow(/CHECK/);
+    db.prepare(`DELETE FROM place WHERE id = 'p'`).run(); // the ratings still go with their place
+    expect(db.prepare(`SELECT count(*) n FROM place_rating`).get()).toEqual({ n: 0 });
+    db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

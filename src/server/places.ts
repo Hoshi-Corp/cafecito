@@ -3,7 +3,10 @@ import type { Db } from "./db";
 import { HttpError, assertOwner, bad, cleanText, isObject } from "./groups";
 import type { Place, PlaceComment } from "../lib/types";
 
+/** Places on the list; archived ones don't count, so archiving old suggestions makes room. */
 export const MAX_PLACES = 100;
+const ACTIVE = `deleted_at IS NULL AND archived_at IS NULL`;
+const FULL = `The wishlist can hold ${MAX_PLACES} places; archive or remove some first`;
 // shortcut: removed places stay for good and count toward this, so a group that adds and removes 500 places stops being able to add
 // more; add a purge of old removed places if that ever happens.
 export const MAX_PLACE_ROWS = 500;
@@ -33,7 +36,8 @@ function cleanUrl(v: unknown) {
 export function listPlaces(db: Db, groupId: string): Place[] {
   const rows = db
     .prepare(
-      `SELECT id, name, link, map_link mapLink, notes, suggested_by suggestedBy, been_there beenThere FROM place WHERE group_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid`,
+      `SELECT id, name, link, map_link mapLink, notes, suggested_by suggestedBy, been_there beenThere, created_at createdAt,
+              archived_at archivedAt FROM place WHERE group_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid`,
     )
     .all(groupId) as (Omit<Place, "votes" | "beenThere" | "ratings" | "comments"> & { beenThere: number })[];
   const votes = db
@@ -60,9 +64,9 @@ export function createPlace(db: Db, groupId: string, memberId: string, body: unk
   if (!isObject(body)) throw bad("Expected an object");
   const values = [cleanText(body.name, 80, true), cleanUrl(body.link), cleanUrl(body.mapLink), cleanText(body.notes, 500, false)];
   const { n, listed } = db
-    .prepare(`SELECT count(*) n, count(*) FILTER (WHERE deleted_at IS NULL) listed FROM place WHERE group_id = ?`)
+    .prepare(`SELECT count(*) n, count(*) FILTER (WHERE ${ACTIVE}) listed FROM place WHERE group_id = ?`)
     .get(groupId) as { n: number; listed: number };
-  if (listed >= MAX_PLACES) throw new HttpError(409, `The wishlist can hold ${MAX_PLACES} places`);
+  if (listed >= MAX_PLACES) throw new HttpError(409, FULL);
   if (n >= MAX_PLACE_ROWS) throw new HttpError(409, "This group has used up its places, including removed ones");
   const id = randomUUID();
   db.prepare(`INSERT INTO place (id, group_id, name, link, map_link, notes, suggested_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
@@ -73,9 +77,9 @@ export function createPlace(db: Db, groupId: string, memberId: string, body: unk
 
 /** The place, if it is in the caller's group and not removed; `suggestedBy` says who may edit it. */
 function findPlace(db: Db, groupId: string, placeId: string) {
-  const p = db.prepare(`SELECT suggested_by suggestedBy FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL`).get(placeId, groupId) as
-    | { suggestedBy: string | null }
-    | undefined;
+  const p = db
+    .prepare(`SELECT suggested_by suggestedBy, archived_at archivedAt FROM place WHERE id = ? AND group_id = ? AND deleted_at IS NULL`)
+    .get(placeId, groupId) as { suggestedBy: string | null; archivedAt: number | null } | undefined;
   if (!p) throw new HttpError(404, "No such place");
   return p;
 }
@@ -85,10 +89,10 @@ function assertMayEdit(db: Db, memberId: string, suggestedBy: string | null) {
   if (suggestedBy !== memberId) assertOwner(db, memberId);
 }
 
-/** The details need the suggester or the owner; anyone in the group may mark a place as visited. */
-export function updatePlace(db: Db, groupId: string, memberId: string, placeId: string, body: unknown) {
+/** The details and archiving need the suggester or the owner; anyone in the group may mark a place as visited. */
+export function updatePlace(db: Db, groupId: string, memberId: string, placeId: string, body: unknown, now = Date.now()) {
   if (!isObject(body)) throw bad("Expected an object");
-  const { suggestedBy } = findPlace(db, groupId, placeId);
+  const { suggestedBy, archivedAt } = findPlace(db, groupId, placeId);
   const set: string[] = [];
   const args: (string | number)[] = [];
   const field = (column: string, value: string | number) => (set.push(`${column} = ?`), args.push(value));
@@ -96,6 +100,15 @@ export function updatePlace(db: Db, groupId: string, memberId: string, placeId: 
   if (body.link !== undefined) field("link", cleanUrl(body.link));
   if (body.mapLink !== undefined) field("map_link", cleanUrl(body.mapLink));
   if (body.notes !== undefined) field("notes", cleanText(body.notes, 500, false));
+  if (body.archived !== undefined) {
+    if (typeof body.archived !== "boolean") throw bad("Invalid value");
+    const back = !body.archived && archivedAt !== null;
+    if (back && (db.prepare(`SELECT count(*) n FROM place WHERE group_id = ? AND ${ACTIVE}`).get(groupId) as { n: number }).n >= MAX_PLACES)
+      throw new HttpError(409, FULL);
+    // Archiving again keeps the first date.
+    set.push(`archived_at = ${body.archived ? "coalesce(archived_at, ?)" : "NULL"}`);
+    if (body.archived) args.push(now);
+  }
   if (set.length) assertMayEdit(db, memberId, suggestedBy);
   if (body.beenThere !== undefined) {
     if (typeof body.beenThere !== "boolean") throw bad("Invalid value");
@@ -119,12 +132,12 @@ export function deletePlace(db: Db, groupId: string, memberId: string, placeId: 
   db.prepare(`UPDATE place SET deleted_at = ? WHERE id = ?`).run(now, placeId);
 }
 
-/** My own star rating (1 to 5), replacing an earlier one. */
+/** My own star rating (half a star to 5, in halves), replacing an earlier one. */
 export function ratePlace(db: Db, groupId: string, memberId: string, placeId: string, body: unknown) {
   if (!isObject(body)) throw bad("Expected an object");
   findPlace(db, groupId, placeId);
   const { stars } = body;
-  if (!Number.isInteger(stars) || (stars as number) < 1 || (stars as number) > 5) throw bad("Stars go from 1 to 5");
+  if (typeof stars !== "number" || !Number.isInteger(stars * 2) || stars < 0.5 || stars > 5) throw bad("Stars go from half a star to 5, in halves");
   db.prepare(`INSERT INTO place_rating (place_id, member_id, stars) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET stars = excluded.stars`).run(placeId, memberId, stars);
 }
 

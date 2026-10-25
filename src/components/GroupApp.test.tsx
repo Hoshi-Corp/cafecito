@@ -412,12 +412,13 @@ describe("outings", () => {
     expect((screen.getByLabelText("What") as HTMLInputElement).validity.valid).toBe(false);
   });
 
-  const cafe = { id: "p9", name: "Café Y", link: "https://y.example", mapLink: "", notes: "", suggestedBy: "b", beenThere: false, votes: [], ratings: {}, comments: [] };
+  const cafe = { id: "p9", name: "Café Y", link: "https://y.example", mapLink: "", notes: "", suggestedBy: "b", beenThere: false, createdAt: 0, archivedAt: null, votes: [], ratings: {}, comments: [] };
 
-  it("offers the wishlist when proposing: picking a place fills Where and sends its id", async () => {
-    await open({ ...crew, places: [cafe, { ...cafe, id: "p8", name: "Old Haunt", beenThere: true }] });
+  it("offers the wishlist (not what is archived) when proposing: picking a place fills Where and sends its id", async () => {
+    await open({ ...crew, places: [cafe, { ...cafe, id: "p8", name: "Old Haunt", beenThere: true }, { ...cafe, id: "p7", name: "Shelved", archivedAt: 1 }] });
     fireEvent.click(screen.getAllByRole("button", { name: /^Propose / })[0]);
     expect(screen.getByRole("option", { name: "Old Haunt (been there)" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Shelved" })).toBeNull(); // archived places aren't offered
     fireEvent.change(screen.getByLabelText("From the wishlist (optional)"), { target: { value: "p9" } });
     expect((screen.getByLabelText("Where (optional)") as HTMLInputElement).value).toBe("Café Y");
     fireEvent.change(screen.getByLabelText("What"), { target: { value: "Coffee" } });
@@ -475,194 +476,470 @@ describe("outings", () => {
 });
 
 describe("wishlist", () => {
-  const place = { id: "p1", name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "b", beenThere: false, votes: ["c"], ratings: {}, comments: [] };
+  const NOW = Date.parse("2026-10-13T15:00:00Z");
+  const DAY = 864e5;
+  const place = { id: "p1", name: "Café X", link: "https://x.example", mapLink: "https://maps.example/x", notes: "Great pastries", suggestedBy: "b", beenThere: false, createdAt: NOW - 21 * DAY, archivedAt: null, votes: ["c"], ratings: {}, comments: [] };
   const visited = { ...place, id: "p2", name: "Old Haunt", link: "", mapLink: "", notes: "", suggestedBy: null, beenThere: true, votes: ["a", "b", "c"] };
   const wanted = { ...place, id: "p3", name: "Wanted", link: "", mapLink: "", notes: "", votes: ["a", "b"] };
+  const shelved = { ...place, id: "p4", name: "Shelved", link: "", mapLink: "", notes: "", archivedAt: NOW - 2 * DAY };
+  /** `n` places to try, the newest first, none wanted yet. */
+  const many = (n: number, extra: object = {}) =>
+    Array.from({ length: n }, (_, i) => ({ ...place, id: `m${i}`, name: `Place ${i + 1}`, link: "", mapLink: "", notes: "", votes: [], createdAt: NOW - i * DAY, ...extra }));
 
-  it("lists places to try first, the most wanted before the rest, with links, notes and who suggested them", async () => {
-    await open({ ...crew, places: [visited, place, wanted] });
-    const names = screen.getAllByRole("listitem").map((li) => li.querySelector("h3")?.textContent).filter((n) => ["Café X", "Old Haunt", "Wanted"].includes(n ?? ""));
-    expect(names).toEqual(["Wanted", "Café X", "Old Haunt"]);
-    const link = screen.getByRole("link", { name: "Café X" });
-    expect(link.getAttribute("href")).toBe("https://x.example");
-    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(screen.getByRole("link", { name: "Map" }).getAttribute("href")).toBe("https://maps.example/x");
-    expect(screen.getByText("Great pastries")).toBeTruthy();
-    expect(screen.getByText("Suggested by someone who left")).toBeTruthy();
-    expect(screen.getAllByText("Suggested by Ben")).toHaveLength(2);
+  // jsdom has no modal dialogs; the browser's showModal opens one on top of the page.
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    };
   });
 
-  it("adds a place", async () => {
-    await open();
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Café Y " } });
-    fireEvent.change(screen.getByLabelText("Website (optional)"), { target: { value: "https://y.example" } });
-    fireEvent.change(screen.getByLabelText("Notes (optional)"), { target: { value: "Quiet" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    expect(await sent(1)).toEqual([{ path: "/places", body: { name: "Café Y", link: "https://y.example", mapLink: "", notes: "Quiet" } }]);
-    await vi.waitFor(() => expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(""));
+  const section = () => within(screen.getByRole("heading", { name: "Wishlist" }).closest("section")!);
+  /** The names in the list, top to bottom. */
+  const titles = () => section().queryAllByRole("button", { name: /^Open / }).map((b) => b.getAttribute("aria-label")!.slice(5));
+  const row = (name: string) => screen.getByRole("button", { name: `Open ${name}` }).closest("li")!;
+  const list = (name: RegExp) => fireEvent.click(screen.getByRole("button", { name }));
+  const sheet = (title: string) => within(screen.getByRole("dialog", { name: title }));
+  const openPlace = (name: string) => fireEvent.click(screen.getByRole("button", { name: `Open ${name}` }));
+  const menu = (place: string, item: string) => {
+    fireEvent.click(screen.getByRole("button", { name: `Options for ${place}` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: item }));
+  };
+
+  it("sorts places into To try, Been there and Archived as short rows, the most wanted first", async () => {
+    await open({ ...crew, places: [visited, place, { ...wanted, comments: [{ id: "k", memberId: "a", body: "Yes", createdAt: NOW }] }, shelved] });
+    expect(screen.getByRole("button", { name: "To try · 2" }).getAttribute("aria-pressed")).toBe("true");
+    expect(titles()).toEqual(["Wanted", "Café X"]);
+    expect(row("Wanted").textContent).toBe("WantedBen · 3 weeks ago · 1 comment♥2›");
+    expect(row("Café X").textContent).toBe("Café XBen · 3 weeks ago♥1›");
+    list(/^Been there · 1/);
+    expect(titles()).toEqual(["Old Haunt"]);
+    expect(row("Old Haunt").textContent).toContain("Someone who left · 3 weeks ago");
+    list(/^Archived · 1/);
+    expect(titles()).toEqual(["Shelved"]);
+    expect(row("Shelved").textContent).toContain("Ben · archived 2 days ago");
   });
 
-  it("cancels adding a place: the typed text is gone and the panel closes", async () => {
+  it("shows the group's stars on the rows of places it has been to, the best rated first", async () => {
+    await open({ ...crew, places: [{ ...visited, ratings: { a: 3 } }, { ...visited, id: "p5", name: "Favourite", ratings: { a: 5, b: 4 } }, { ...visited, id: "p6", name: "Unrated" }] });
+    list(/^Been there · 3/);
+    expect(titles()).toEqual(["Favourite", "Old Haunt", "Unrated"]);
+    expect(row("Favourite").textContent).toContain("4.5 from 2 ratings4.5");
+    expect(row("Unrated").textContent).toContain("No ratings yet");
+    // The sun-coloured part of each little star.
+    const fills = [...row("Favourite").querySelectorAll("svg")].map((svg) => Number(svg.querySelector("rect")?.getAttribute("width") ?? 0) / 24);
+    expect(fills).toEqual([1, 1, 1, 1, 0.5]);
+  });
+
+  it("says what each empty list is for, and what to do when there are no places at all", async () => {
+    await open({ ...crew, places: [visited] });
+    expect(screen.getByText(/^Nothing left to try/)).toBeTruthy();
+    list(/^Archived · 0/);
+    expect(screen.getByText(/^Old suggestions you archive wait here/)).toBeTruthy();
+    cleanup();
+    await open({ ...crew, places: [wanted] });
+    list(/^Been there · 0/);
+    expect(screen.getByText(/^Places the group has been to show up here/)).toBeTruthy();
+    cleanup();
     await open();
-    const panel = screen.getByText("Add a place").closest("details")!;
-    fireEvent.click(screen.getByText("Add a place"));
-    await act(() => new Promise((r) => setTimeout(r, 0))); // the browser reports the toggle in a later task
-    expect(panel.open).toBe(true);
-    const form = within(panel);
-    fireEvent.change(form.getByLabelText("Name"), { target: { value: "Café Y" } });
-    fireEvent.click(form.getByRole("button", { name: "Cancel" }));
-    await vi.waitFor(() => expect(panel.open).toBe(false));
-    expect((form.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+    expect(screen.getByText("No places yet. Add a café or restaurant the group wants to try.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^To try/ })).toBeNull();
+  });
+
+  it("pages through long lists eight at a time, and starts over on another list", async () => {
+    await open({ ...crew, places: [...many(19), visited] });
+    expect(titles()).toEqual(["Place 1", "Place 2", "Place 3", "Place 4", "Place 5", "Place 6", "Place 7", "Place 8"]);
+    expect(screen.getByText("Page 1 of 3")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Next page");
+    click("Next page");
+    expect(titles()).toEqual(["Place 17", "Place 18", "Place 19"]);
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Previous page");
+    expect(screen.getByText("Page 2 of 3")).toBeTruthy();
+    list(/^Been there · /);
+    expect(screen.queryByRole("navigation", { name: "Wishlist pages" })).toBeNull(); // one page: no pager
+    list(/^To try · /);
+    expect(titles()[0]).toBe("Place 1");
+  });
+
+  it("searches names and notes, accents or not, once the wishlist is long", async () => {
+    await open({ ...crew, places: many(8) });
+    expect(screen.queryByLabelText("Search the wishlist")).toBeNull();
+    cleanup();
+    await open({ ...crew, places: [...many(10), { ...wanted, name: "Café Lumen" }, { ...wanted, id: "p7", name: "Torta Boyz", notes: "Best CAFE con leche" }] });
+    const search = (text: string) => fireEvent.change(screen.getByLabelText("Search the wishlist"), { target: { value: text } });
+    click("Next page");
+    search("  cafe ");
+    expect(titles()).toEqual(["Café Lumen", "Torta Boyz"]); // back to the first page of results
+    search("place 1");
+    expect(titles()).toEqual(["Place 1", "Place 10"]);
+    search("place");
+    expect(titles()).toHaveLength(8);
+    expect(screen.getByText("Page 1 of 2")).toBeTruthy();
+    search("");
+    expect(titles()).toHaveLength(8);
+  });
+
+  it("says when a search finds nothing in this list, and offers the lists where it did", async () => {
+    await open({ ...crew, places: [...many(9), visited, { ...visited, id: "p8", name: "Old Haunt 2", archivedAt: NOW }] });
+    fireEvent.change(screen.getByLabelText("Search the wishlist"), { target: { value: "haunt" } });
+    expect(screen.getByText("Nothing in To try matches “haunt”.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "1 in Archived" })).toBeTruthy();
+    click("1 in Been there");
+    expect(titles()).toEqual(["Old Haunt"]);
+    fireEvent.change(screen.getByLabelText("Search the wishlist"), { target: { value: "zzz" } });
+    expect(screen.getByText("Nothing in Been there matches “zzz”.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^\d+ in / })).toBeNull();
+  });
+
+  it("adds a place in a pop-up, then turns to its page and marks it, even from a search on another list", async () => {
+    const before = { ...crew, places: [...many(9, { votes: ["a"] }), visited] };
+    await open(before);
+    list(/^Been there · /);
+    fireEvent.change(screen.getByLabelText("Search the wishlist"), { target: { value: "haunt" } });
+    // The server answers the add, then sends the list with the new place in it (nobody wants to go yet, so it's last).
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method) writes.push({ path: url.replace("/api/groups/me", ""), body: JSON.parse(init.body as string) });
+      return { ok: true, json: async () => (writes.length ? { ...before, places: [...before.places, { ...wanted, id: "new", name: "Café New", votes: [], createdAt: NOW }] } : before) };
+    });
+    fireEvent.click(screen.getByRole("button", { name: "+ Add a place" }));
+    const form = sheet("Add a place");
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: " Café New " } });
+    fireEvent.change(form.getByLabelText("Website (optional)"), { target: { value: "https://new.example" } });
+    fireEvent.change(form.getByLabelText("Notes (optional)"), { target: { value: "Quiet" } });
+    fireEvent.click(form.getByRole("button", { name: "Add" }));
+    expect((await sent(1))[0]).toEqual({ path: "/places", body: { name: "Café New", link: "https://new.example", mapLink: "", notes: "Quiet" } });
+    await vi.waitFor(() => expect(titles()).toEqual(["Place 9", "Café New"]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Page 2 of 2")).toBeTruthy();
+    expect(row("Café New").className).toContain("bg-butter");
+    expect((screen.getByLabelText("Search the wishlist") as HTMLInputElement).value).toBe("");
+    click("Previous page"); // turning the page lets go of it
+    expect(titles()).toHaveLength(8);
+  });
+
+  it("closes a pop-up with Cancel, ✕, Escape or a tap outside it, and starts over empty", async () => {
+    await open();
+    const add = () => fireEvent.click(screen.getByRole("button", { name: "+ Add a place" }));
+    add();
+    fireEvent.change(sheet("Add a place").getByLabelText("Name"), { target: { value: "Café Y" } });
+    fireEvent.click(sheet("Add a place").getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    add();
+    expect((sheet("Add a place").getByLabelText("Name") as HTMLInputElement).value).toBe("");
+    fireEvent.click(sheet("Add a place").getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    add();
+    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    add();
+    fireEvent.click(sheet("Add a place").getByLabelText("Name")); // inside: stays open
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("dialog"));
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(writes).toEqual([]);
   });
 
   it("sends once however often Add is pressed, and shows why a place was refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     await open();
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Café Y" } });
-    const form = screen.getByLabelText("Name").closest("form")!;
+    fireEvent.click(screen.getByRole("button", { name: "+ Add a place" }));
+    fireEvent.change(sheet("Add a place").getByLabelText("Name"), { target: { value: "Café Y" } });
+    const form = sheet("Add a place").getByLabelText("Name").closest("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(await sent(1)).toHaveLength(1);
-    await vi.waitFor(() => expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("")); // the form starts over
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
       init?.method === "POST"
         ? { ok: false, status: 400, json: async () => ({ error: "Links must start with http:// or https://" }) }
         : { ok: true, json: async () => crew },
     );
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Café Z" } });
-    fireEvent.submit(screen.getByLabelText("Name").closest("form")!);
-    expect((await screen.findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
-    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Café Z");
+    fireEvent.click(screen.getByRole("button", { name: "+ Add a place" }));
+    fireEvent.change(sheet("Add a place").getByLabelText("Name"), { target: { value: "Café Z" } });
+    fireEvent.submit(sheet("Add a place").getByLabelText("Name").closest("form")!);
+    expect((await sheet("Add a place").findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
+    expect((sheet("Add a place").getByLabelText("Name") as HTMLInputElement).value).toBe("Café Z");
   });
 
-  it("votes, takes the vote back, and marks a place as visited", async () => {
-    await open({ ...crew, places: [{ ...place, votes: ["a"] }, { ...wanted, votes: [] }] });
-    fireEvent.click(screen.getByRole("button", { name: "I want to go · 0" }));
-    fireEvent.click(screen.getByRole("button", { name: "I want to go · 1" }));
-    fireEvent.click(screen.getAllByLabelText("Been there")[0]);
-    expect(await sent(3)).toEqual([
+  it("opens a place from its row with its links, notes and who suggested it when", async () => {
+    await open({ ...crew, places: [place] });
+    openPlace("Café X");
+    const details = sheet("Café X");
+    expect(details.getByText("Suggested by Ben · 3 weeks ago")).toBeTruthy();
+    expect(details.getByText("Great pastries")).toBeTruthy();
+    const website = details.getByRole("link", { name: "Website" });
+    expect(website.getAttribute("href")).toBe("https://x.example");
+    expect(website.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(details.getByRole("link", { name: "Map" }).getAttribute("href")).toBe("https://maps.example/x");
+    expect(details.queryByRole("radiogroup")).toBeNull(); // nobody has been: no stars yet
+  });
+
+  it("votes from the row or the pop-up, and marks a place as visited and back", async () => {
+    await open({ ...crew, places: [{ ...place, votes: ["a"] }, { ...wanted, votes: [] }, visited] });
+    fireEvent.click(screen.getByRole("button", { name: "I want to go to Wanted · 0" }));
+    expect(screen.queryByRole("dialog")).toBeNull(); // the vote doesn't open the place
+    openPlace("Café X");
+    fireEvent.click(sheet("Café X").getByRole("button", { name: "I want to go · 1" }));
+    fireEvent.click(sheet("Café X").getByRole("button", { name: "Been there" }));
+    fireEvent.click(sheet("Café X").getByRole("button", { name: "Close" }));
+    list(/^Been there · 1/);
+    openPlace("Old Haunt");
+    fireEvent.click(sheet("Old Haunt").getByRole("button", { name: "Been there", pressed: true }));
+    expect(await sent(4)).toEqual([
       { path: "/places/p3/vote", body: null },
       { path: "/places/p1/vote", body: null },
       { path: "/places/p1", body: { beenThere: true } },
+      { path: "/places/p2", body: { beenThere: false } },
     ]);
   });
 
-  it("offers Remove only to whoever suggested a place, or the owner", async () => {
-    await open({ ...crew, meId: "c", places: [place, { ...wanted, suggestedBy: "c" }] });
-    expect(screen.queryByRole("button", { name: "Remove Café X" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Remove Wanted" })).toBeTruthy(); // the one Chie suggested
-    cleanup();
-    vi.stubGlobal("confirm", () => true);
-    await open({ ...crew, places: [place] }); // Ana owns the group
-    fireEvent.click(screen.getByRole("button", { name: "Remove Café X" }));
-    expect(await sent(1)).toEqual([{ path: "/places/p1", body: null }]);
-  });
-
-  it("edits a place: only the fields that changed are sent, nothing when none did", async () => {
-    await open({ ...crew, meId: "b", places: [place] });
-    const form = () => within(screen.getByRole("heading", { name: "Edit Café X" }).closest("li")!);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Café X" }));
-    expect((form().getByLabelText("Name") as HTMLInputElement).value).toBe("Café X");
-    expect((form().getByLabelText("Notes (optional)") as HTMLTextAreaElement).value).toBe("Great pastries");
-    fireEvent.click(form().getByRole("button", { name: "Save" }));
-    await vi.waitFor(() => expect(screen.queryByRole("heading", { name: "Edit Café X" })).toBeNull());
-    expect(writes).toEqual([]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit Café X" }));
-    fireEvent.change(form().getByLabelText("Name"), { target: { value: " Café Z " } });
-    fireEvent.change(form().getByLabelText("Website (optional)"), { target: { value: "" } });
-    fireEvent.click(form().getByRole("button", { name: "Save" }));
-    expect(await sent(1)).toEqual([{ path: "/places/p1", body: { name: "Café Z", link: "" } }]);
-    await vi.waitFor(() => expect(screen.queryByRole("heading", { name: "Edit Café X" })).toBeNull());
-  });
-
-  it("cancels an edit, keeps it open with the reason when refused, and offers Edit only to the suggester or the owner", async () => {
+  it("shows on its row why a vote was refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const mine = { ...crew, meId: "c", places: [place, { ...wanted, suggestedBy: "c" }] };
-    await open(mine);
-    expect(screen.queryByRole("button", { name: "Edit Café X" })).toBeNull();
-    const form = () => within(screen.getByRole("heading", { name: "Edit Wanted" }).closest("li")!);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Wanted" }));
-    fireEvent.click(form().getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("heading", { name: "Edit Wanted" })).toBeNull();
+    const group = { ...crew, places: [wanted] };
+    await open(group);
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method ? { ok: false, status: 404, json: async () => ({ error: "No such place" }) } : { ok: true, json: async () => group },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "I want to go to Wanted · 2" }));
+    expect((await within(row("Wanted")).findByRole("alert")).textContent).toBe("No such place");
+  });
+
+  it("offers the ⋯ menu only to whoever suggested a place, or the owner; Remove asks first and closes the pop-up", async () => {
+    await open({ ...crew, meId: "c", places: [place, { ...wanted, suggestedBy: "c" }] });
+    openPlace("Café X");
+    expect(screen.queryByRole("button", { name: "Options for Café X" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    openPlace("Wanted");
+    expect(screen.getByRole("button", { name: "Options for Wanted" })).toBeTruthy(); // the one Chie suggested
+    cleanup();
+    let asked = "";
+    vi.stubGlobal("confirm", (q: string) => ((asked = q), true));
+    await open({ ...crew, places: [place] }); // Ana owns the group
+    openPlace("Café X");
+    // Once removed, the server's list no longer has it.
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method) writes.push({ path: url.replace("/api/groups/me", ""), body: init.body ? JSON.parse(init.body as string) : null });
+      return { ok: true, json: async () => ({ ...crew, places: [] }) };
+    });
+    menu("Café X", "Remove");
+    expect(asked).toBe("Remove “Café X” for good? Its ratings and comments go too.");
+    expect(await sent(1)).toEqual([{ path: "/places/p1", body: null }]);
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("closes the ⋯ menu with Escape or a tap elsewhere", async () => {
+    await open({ ...crew, places: [place] });
+    openPlace("Café X");
+    const button = screen.getByRole("button", { name: "Options for Café X" });
+    fireEvent.click(button);
+    expect(document.activeElement?.textContent).toBe("Edit");
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: "Archive" })); // inside: stays open
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(button);
+    fireEvent.click(button);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(writes).toEqual([]);
+  });
+
+  it("archives a place and brings it back", async () => {
+    await open({ ...crew, places: [place, shelved] });
+    openPlace("Café X");
+    menu("Café X", "Archive");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    list(/^Archived · 1/);
+    openPlace("Shelved");
+    expect(sheet("Shelved").getByText("Suggested by Ben · 3 weeks ago · archived 2 days ago")).toBeTruthy();
+    menu("Shelved", "Bring back");
+    expect(await sent(2)).toEqual([
+      { path: "/places/p1", body: { archived: true } },
+      { path: "/places/p4", body: { archived: false } },
+    ]);
+  });
+
+  it("edits a place in the pop-up: only the fields that changed are sent, nothing when none did", async () => {
+    await open({ ...crew, meId: "b", places: [place] });
+    openPlace("Café X");
+    menu("Café X", "Edit");
+    expect((sheet("Edit Café X").getByLabelText("Name") as HTMLInputElement).value).toBe("Café X");
+    expect((sheet("Edit Café X").getByLabelText("Notes (optional)") as HTMLTextAreaElement).value).toBe("Great pastries");
+    fireEvent.click(sheet("Edit Café X").getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => expect(screen.getByRole("dialog", { name: "Café X" })).toBeTruthy()); // back to the place
     expect(writes).toEqual([]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit Wanted" }));
+    menu("Café X", "Edit");
+    fireEvent.change(sheet("Edit Café X").getByLabelText("Name"), { target: { value: " Café Z " } });
+    fireEvent.change(sheet("Edit Café X").getByLabelText("Website (optional)"), { target: { value: "" } });
+    fireEvent.click(sheet("Edit Café X").getByRole("button", { name: "Save" }));
+    expect(await sent(1)).toEqual([{ path: "/places/p1", body: { name: "Café Z", link: "" } }]);
+    await vi.waitFor(() => expect(screen.getByRole("dialog", { name: "Café X" })).toBeTruthy());
+  });
+
+  it("cancels an edit, and keeps it open with the reason when refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const mine = { ...crew, meId: "c", places: [{ ...wanted, suggestedBy: "c" }] };
+    await open(mine);
+    openPlace("Wanted");
+    menu("Wanted", "Edit");
+    fireEvent.click(sheet("Edit Wanted").getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("dialog", { name: "Wanted" })).toBeTruthy();
+    expect(writes).toEqual([]);
+
+    menu("Wanted", "Edit");
     vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
       init?.method === "PATCH"
         ? { ok: false, status: 400, json: async () => ({ error: "Links must start with http:// or https://" }) }
         : { ok: true, json: async () => mine }, // a refused write reloads the group
     );
-    fireEvent.change(form().getByLabelText("Website (optional)"), { target: { value: "https://ok.example" } });
-    fireEvent.click(form().getByRole("button", { name: "Save" }));
-    expect((await form().findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
-    expect((form().getByLabelText("Website (optional)") as HTMLInputElement).value).toBe("https://ok.example");
+    fireEvent.change(sheet("Edit Wanted").getByLabelText("Website (optional)"), { target: { value: "https://ok.example" } });
+    fireEvent.click(sheet("Edit Wanted").getByRole("button", { name: "Save" }));
+    expect((await sheet("Edit Wanted").findByRole("alert")).textContent).toBe("Links must start with http:// or https://");
+    expect((sheet("Edit Wanted").getByLabelText("Website (optional)") as HTMLInputElement).value).toBe("https://ok.example");
   });
 
-  it("shows the average rating and lets me rate, change and take back my own stars", async () => {
-    await open({ ...crew, meId: "a", places: [{ ...place, ratings: { b: 5, c: 3 } }, { ...wanted, ratings: { a: 4 } }] });
-    expect(screen.getByText("4.0 from 2 ratings")).toBeTruthy();
-    expect(screen.getByText("4.0 from 1 rating")).toBeTruthy();
-    // The first place (Café X: 1 vote... sorted after Wanted, which has 2 votes); address stars by place.
-    const stars = (name: string) => within(screen.getByRole("group", { name: `Your rating of ${name}` }));
-    fireEvent.click(stars("Café X").getByRole("button", { name: "2 stars" }));
-    fireEvent.click(stars("Wanted").getByRole("button", { name: "4 stars" })); // my current rating: takes it back
-    expect(stars("Wanted").getByRole("button", { name: "4 stars" }).getAttribute("aria-pressed")).toBe("true");
+  /** Opens a visited place, where the stars are. */
+  const rated = async (ratings: Record<string, number>) => {
+    await open({ ...crew, meId: "a", places: [{ ...visited, name: "Café X", id: "p1", ratings }] });
+    list(/^Been there · /);
+    openPlace("Café X");
+    return within(screen.getByRole("radiogroup", { name: "Your rating of Café X" }));
+  };
+
+  it("shows the average rating and lets me rate in half stars, change and take back my own", async () => {
+    const stars = await rated({ a: 4, b: 5, c: 2.5 });
+    expect(sheet("Café X").getByText("3.8 from 3 ratings")).toBeTruthy();
+    expect(stars.getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(
+      ["0.5 stars", "1 star", "1.5 stars", "2 stars", "2.5 stars", "3 stars", "3.5 stars", "4 stars", "4.5 stars", "5 stars"],
+    );
+    expect(stars.getByRole("radio", { name: "4 stars" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(stars.getByRole("radio", { name: "2.5 stars" }));
+    fireEvent.click(stars.getByRole("radio", { name: "2.5 stars" })); // what I just picked: takes it back
     expect(await sent(2)).toEqual([
-      { path: "/places/p1/rating", body: { stars: 2 } },
-      { path: "/places/p3/rating", body: null },
+      { path: "/places/p1/rating", body: { stars: 2.5 } },
+      { path: "/places/p1/rating", body: null },
     ]);
   });
 
-  it("says when nobody has rated a place", async () => {
-    await open({ ...crew, places: [place] });
-    expect(screen.getByText("No ratings yet")).toBeTruthy();
+  it("fills the stars by halves: my rating, or a preview under the mouse", async () => {
+    const stars = await rated({ a: 3.5 });
+    const group = screen.getByRole("radiogroup");
+    const fills = () => [...group.querySelectorAll("svg")].map((svg) => Number(svg.querySelector("rect")?.getAttribute("width") ?? 0) / 24);
+    expect(fills()).toEqual([1, 1, 1, 0.5, 0]);
+    fireEvent.pointerEnter(stars.getByRole("radio", { name: "1.5 stars" }), { pointerType: "touch" }); // a finger doesn't preview
+    expect(fills()).toEqual([1, 1, 1, 0.5, 0]);
+    fireEvent.pointerEnter(stars.getByRole("radio", { name: "1.5 stars" }), { pointerType: "mouse" });
+    expect(fills()).toEqual([1, 0.5, 0, 0, 0]);
+    expect(sheet("Café X").getByText("1.5 stars")).toBeTruthy();
+    fireEvent.pointerLeave(group);
+    expect(fills()).toEqual([1, 1, 1, 0.5, 0]);
+    expect(sheet("Café X").getByText("3.5 from 1 rating")).toBeTruthy();
   });
 
-  it("lists comments with their authors, adds one, and offers Delete only on my own (or all to the owner)", async () => {
-    const withComments = { ...place, comments: [{ id: "k1", memberId: "b", body: "Loved it", createdAt: 1 }, { id: "k2", memberId: "c", body: "Loud", createdAt: 2 }] };
+  it("rates from the keyboard: one stop in the tab order, arrows move by half a star from what I just picked, Delete clears", async () => {
+    const stars = await rated({ a: 3.5 });
+    expect(stars.getAllByRole("radio").filter((r) => r.tabIndex === 0).map((r) => r.getAttribute("aria-label"))).toEqual(["3.5 stars"]);
+    const mine = stars.getAllByRole("radio")[6];
+    fireEvent.keyDown(mine, { key: "ArrowRight" });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("4 stars");
+    fireEvent.keyDown(mine, { key: "ArrowRight" }); // builds on the 4 just picked, before the server answers
+    expect(stars.getAllByRole("radio").find((r) => r.getAttribute("aria-checked") === "true")?.getAttribute("aria-label")).toBe("4.5 stars");
+    fireEvent.keyDown(mine, { key: "End" });
+    fireEvent.keyDown(mine, { key: "End" }); // already 5: nothing
+    fireEvent.keyDown(mine, { key: "Home" });
+    fireEvent.keyDown(mine, { key: "ArrowLeft" }); // already the lowest: nothing
+    fireEvent.keyDown(mine, { key: "Delete" });
+    fireEvent.keyDown(mine, { key: "Backspace" }); // nothing left to clear
+    fireEvent.keyDown(mine, { key: "Enter" }); // not a rating key: nothing
+    expect(await sent(5)).toEqual([
+      { path: "/places/p1/rating", body: { stars: 4 } },
+      { path: "/places/p1/rating", body: { stars: 4.5 } },
+      { path: "/places/p1/rating", body: { stars: 5 } },
+      { path: "/places/p1/rating", body: { stars: 0.5 } },
+      { path: "/places/p1/rating", body: null },
+    ]);
+  });
+
+  it("starts the keyboard on half a star when I haven't rated, and puts my old rating back when a new one is refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const stars = await rated({});
+    expect(stars.getAllByRole("radio").filter((r) => r.tabIndex === 0).map((r) => r.getAttribute("aria-label"))).toEqual(["0.5 stars"]);
+    expect(sheet("Café X").getByText("No ratings yet")).toBeTruthy();
+    cleanup();
+    const again = await rated({ a: 2 });
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
+      init?.method === "PUT" ? { ok: false, status: 404, json: async () => ({ error: "No such place" }) } : { ok: true, json: async () => ({ ...crew, places: [{ ...visited, name: "Café X", id: "p1", ratings: { a: 2 } }] }) },
+    );
+    const checked = () => again.getAllByRole("radio").find((r) => r.getAttribute("aria-checked") === "true")?.getAttribute("aria-label");
+    fireEvent.click(again.getByRole("radio", { name: "4.5 stars" }));
+    expect(checked()).toBe("4.5 stars");
+    expect((await sheet("Café X").findByRole("alert")).textContent).toBe("No such place");
+    expect(checked()).toBe("2 stars");
+  });
+
+  it("lists the comments with who wrote each and when, and offers Delete only on my own (or all to the owner)", async () => {
+    const withComments = { ...place, comments: [{ id: "k1", memberId: "b", body: "Loved it", createdAt: NOW - DAY - 1000 }, { id: "k2", memberId: "c", body: "Loud", createdAt: NOW - 5 * 6e4 }] };
     await open({ ...crew, meId: "c", places: [withComments] });
-    expect(screen.getByText("Comments · 2")).toBeTruthy();
-    expect(screen.getByText("Loved it", { exact: false }).textContent).toBe("Ben: Loved it");
+    expect(row("Café X").textContent).toContain("· 2 comments");
+    openPlace("Café X");
+    expect(sheet("Café X").getByRole("heading", { name: "Comments · 2" })).toBeTruthy();
+    const bubble = (body: string) => screen.getByText(body).parentElement!;
+    expect(bubble("Loved it").textContent).toBe("Ben · yesterdayLoved it");
+    expect(bubble("Loud").textContent).toBe("Chie · 5 minutes agoDeleteLoud");
     expect(screen.queryByRole("button", { name: "Delete comment by Ben" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Delete comment by Chie" }));
-    fireEvent.change(screen.getByLabelText("Comment on Café X"), { target: { value: "  Nice  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-    expect(await sent(2)).toEqual([
-      { path: "/places/p1/comments/k2", body: null },
-      { path: "/places/p1/comments", body: { body: "Nice" } },
-    ]);
+    expect(await sent(1)).toEqual([{ path: "/places/p1/comments/k2", body: null }]);
     cleanup();
     await open({ ...crew, places: [withComments] }); // Ana owns the group
+    openPlace("Café X");
     expect(screen.getByRole("button", { name: "Delete comment by Ben" })).toBeTruthy();
   });
 
   it("shows a comment of someone who left as written by a deleted user, and only the owner can delete it", async () => {
-    const orphan = { ...place, comments: [{ id: "k9", memberId: null, body: "See you", createdAt: 1 }] };
+    const orphan = { ...place, comments: [{ id: "k9", memberId: null, body: "See you", createdAt: NOW - 400 * DAY }] };
     await open({ ...crew, meId: "c", places: [orphan] });
-    expect(screen.getByText("See you", { exact: false }).textContent).toBe("Deleted user: See you");
+    openPlace("Café X");
+    expect(screen.getByText("See you").parentElement!.textContent).toBe("Deleted user · last yearSee you");
     expect(screen.queryByRole("button", { name: "Delete comment by a deleted user" })).toBeNull();
     cleanup();
     await open({ ...crew, places: [orphan] }); // Ana owns the group
+    openPlace("Café X");
     fireEvent.click(screen.getByRole("button", { name: "Delete comment by a deleted user" }));
     expect(await sent(1)).toEqual([{ path: "/places/p1/comments/k9", body: null }]);
   });
 
-  it("does not send an empty comment, and shows why a comment was refused", async () => {
+  it("writes a comment in the pop-up and empties the box once it's posted", async () => {
+    await open({ ...crew, places: [place] });
+    openPlace("Café X");
+    expect(sheet("Café X").getByRole("heading", { name: "No comments yet" })).toBeTruthy();
+    const box = sheet("Café X").getByLabelText("Your comment") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "  Nice  " } });
+    expect(sheet("Café X").getByText("8/500")).toBeTruthy();
+    fireEvent.click(sheet("Café X").getByRole("button", { name: "Post" }));
+    expect(await sent(1)).toEqual([{ path: "/places/p1/comments", body: { body: "Nice" } }]);
+    await vi.waitFor(() => expect(box.value).toBe(""));
+  });
+
+  it("does not send an empty comment, and keeps the text with the reason when a comment is refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const group = { ...crew, places: [place] };
     await open(group);
-    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    openPlace("Café X");
+    expect((sheet("Café X").getByRole("button", { name: "Post" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(sheet("Café X").getByLabelText("Your comment").closest("form")!);
     expect(writes).toEqual([]);
     vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) =>
       init?.method === "POST"
         ? { ok: false, status: 409, json: async () => ({ error: "The wishlist can hold 300 comments" }) }
         : { ok: true, json: async () => group },
     );
-    fireEvent.change(screen.getByLabelText("Comment on Café X"), { target: { value: "Hi" } });
-    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-    expect((await screen.findByRole("alert")).textContent).toBe("The wishlist can hold 300 comments");
-    expect((screen.getByLabelText("Comment on Café X") as HTMLInputElement).value).toBe("Hi");
+    fireEvent.change(sheet("Café X").getByLabelText("Your comment"), { target: { value: "Hi" } });
+    fireEvent.click(sheet("Café X").getByRole("button", { name: "Post" }));
+    expect((await sheet("Café X").findByRole("alert")).textContent).toBe("The wishlist can hold 300 comments");
+    expect((sheet("Café X").getByLabelText("Your comment") as HTMLTextAreaElement).value).toBe("Hi");
   });
 });
